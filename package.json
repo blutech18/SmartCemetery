@@ -1,20 +1,40 @@
 {
-  "name": "temp-init",
-  "version": "0.1.0",
+  "name": "smart-cemetery",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "bcryptjs": "^2.4.3",
+    "double-metaphone": "^2.0.1",
+    "exceljs": "^4.4.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.23.0",
     "next": "16.2.10",
+    "next-auth": "^4.24.11",
+    "pdfkit": "^0.19.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^2.15.3",
+    "sonner": "^2.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10"
+    "eslint-config-next": "16.2.10",
+    "fast-check": "^4.9.0",
+    "prisma": "^6.9.0",
+    "vitest": "^4.1.10"
   }
 }

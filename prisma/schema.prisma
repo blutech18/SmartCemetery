@@ -1,0 +1,191 @@
+// Smart Cemetery Navigation and Monitoring Platform
+// Database Schema — MySQL via Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USER MANAGEMENT ──────────────────────────────────────────
+
+model UserType {
+  id       Int    @id @default(autoincrement())
+  typeName String @unique @map("type_name") @db.VarChar(20)
+  users    User[]
+
+  @@map("user_types")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(150)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  userTypeId   Int      @map("user_type_id")
+  status       String   @default("active") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  userType      UserType       @relation(fields: [userTypeId], references: [id])
+  logs          UserLog[]
+  requests      Request[]
+  feedbacks     Feedback[]
+  navigations   Navigation[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+// ─── LOCATION MANAGEMENT ──────────────────────────────────────
+
+model Location {
+  id          Int              @id @default(autoincrement())
+  name        String           @db.VarChar(100)
+  description String?          @db.Text
+  gpsLat      Decimal?         @map("gps_lat") @db.Decimal(10, 8)
+  gpsLng      Decimal?         @map("gps_lng") @db.Decimal(11, 8)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  details     LocationDetail[]
+
+  @@map("locations")
+}
+
+model LocationDetail {
+  id         Int      @id @default(autoincrement())
+  locationId Int      @map("location_id")
+  subsection String   @db.VarChar(50)
+  capacity   Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  plots    Plot[]
+
+  @@map("location_details")
+}
+
+// ─── PLOT & GRAVE MANAGEMENT ──────────────────────────────────
+
+model Plot {
+  id               Int     @id @default(autoincrement())
+  locationDetailId Int     @map("location_detail_id")
+  plotNumber        String  @map("plot_number") @db.VarChar(30)
+  status           String  @default("available") @db.VarChar(20)  // available, occupied, reserved, maintenance
+  gpsLat           Decimal? @map("gps_lat") @db.Decimal(10, 8)
+  gpsLng           Decimal? @map("gps_lng") @db.Decimal(11, 8)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  locationDetail LocationDetail @relation(fields: [locationDetailId], references: [id], onDelete: Restrict)
+  graves         Grave[]
+
+  @@unique([locationDetailId, plotNumber])
+  @@map("plots")
+}
+
+model Grave {
+  id           Int       @id @default(autoincrement())
+  plotId       Int       @unique @map("plot_id")
+  deceasedName String    @map("deceased_name") @db.VarChar(200)
+  burialDate   DateTime? @map("burial_date")
+  status       String    @default("active") @db.VarChar(20) // active, archived
+  archivedAt   DateTime? @map("archived_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  plot    Plot          @relation(fields: [plotId], references: [id], onDelete: Restrict)
+  details GraveDetail?
+
+  @@map("graves")
+}
+
+model GraveDetail {
+  id           Int     @id @default(autoincrement())
+  graveId      Int     @unique @map("grave_id")
+  causeOfDeath  String? @map("cause_of_death") @db.Text   // was VarChar(255); widened for encrypted values
+  contactPerson String? @map("contact_person") @db.Text   // was VarChar(150); widened for encrypted values
+  contactPhone  String? @map("contact_phone")  @db.Text   // was VarChar(30); widened for encrypted values
+  notes         String? @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  grave Grave @relation(fields: [graveId], references: [id], onDelete: Cascade)
+
+  @@map("grave_details")
+}
+
+// ─── INTERACTION & MONITORING ─────────────────────────────────
+
+model UserLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  action    String   @db.VarChar(255)
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_logs")
+}
+
+model Request {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  type        String   @db.VarChar(50)  // reservation, record_update, inquiry
+  description String   @db.Text
+  status      String   @default("pending") @db.VarChar(20) // pending, approved, rejected
+  referenceId String   @unique @map("reference_id") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@map("requests")
+}
+
+model Notification {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @map("user_id")
+  requestId   Int       @map("request_id")
+  referenceId String    @map("reference_id") @db.VarChar(20)
+  outcome     String    @db.VarChar(20) // approved | rejected
+  emailStatus String    @default("none") @map("email_status") @db.VarChar(20) // none | sent | failed
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  rating    Int      @db.TinyInt
+  comment   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("feedback")
+}
+
+model Navigation {
+  id          Int      @id @default(autoincrement())
+  userId      Int?     @map("user_id")
+  origin      String?  @db.VarChar(255)
+  destination String   @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("navigations")
+}
