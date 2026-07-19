@@ -40,6 +40,9 @@ yarn-error.log*
 /AGENTS.md
 /CLAUDE.md
 
+# internal documentation (thesis manuscript, audits, design notes)
+/docs/
+
 # database backups & dumps (root only — Prisma migration SQL stays tracked)
 /*.sql
 *.dump
