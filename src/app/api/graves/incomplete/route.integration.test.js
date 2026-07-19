@@ -28,6 +28,12 @@ function allow() {
   requireRole.mockResolvedValue({ ok: true });
 }
 
+const pinnedPlot = (plotNumber = "A-1") => ({
+  plotNumber,
+  gpsLat: 8.45,
+  gpsLng: 124.66,
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -39,15 +45,17 @@ describe("GET /api/graves/incomplete (integration)", () => {
     // A mix of complete and incomplete active graves.
     const graves = [
       // Complete — must be excluded (Req 5.4).
-      { id: "g-complete", deceasedName: "Jane Doe", burialDate: new Date("2020-01-01"), plotId: "p1" },
-      // Missing burialDate + plotId.
-      { id: "g-1", deceasedName: "John Smith", burialDate: null, plotId: null },
+      { id: "g-complete", deceasedName: "Jane Doe", burialDate: new Date("2020-01-01"), plotId: "p1", plot: pinnedPlot() },
+      // Missing burialDate + plotId (and therefore plot GPS).
+      { id: "g-1", deceasedName: "John Smith", burialDate: null, plotId: null, plot: null },
       // Missing deceasedName (whitespace only) — treated as missing.
-      { id: "g-2", deceasedName: "   ", burialDate: new Date("2021-05-05"), plotId: "p2" },
-      // Missing plotId only.
-      { id: "g-3", deceasedName: "Alice", burialDate: new Date("2019-03-03"), plotId: null },
+      { id: "g-2", deceasedName: "   ", burialDate: new Date("2021-05-05"), plotId: "p2", plot: pinnedPlot("A-2") },
+      // Missing plotId and plot GPS.
+      { id: "g-3", deceasedName: "Alice", burialDate: new Date("2019-03-03"), plotId: null, plot: null },
+      // Assigned plot missing one GPS coordinate.
+      { id: "g-4", deceasedName: "Carol", burialDate: new Date("2022-06-06"), plotId: "p4", plot: { plotNumber: "A-4", gpsLat: 8.45, gpsLng: null } },
       // Another complete record — excluded.
-      { id: "g-complete-2", deceasedName: "Bob", burialDate: new Date("2018-02-02"), plotId: "p3" },
+      { id: "g-complete-2", deceasedName: "Bob", burialDate: new Date("2018-02-02"), plotId: "p3", plot: pinnedPlot("A-3") },
     ];
     prisma.grave.findMany.mockResolvedValue(graves);
 
@@ -56,12 +64,12 @@ describe("GET /api/graves/incomplete (integration)", () => {
 
     expect(response.status).toBe(200);
 
-    // Exactly the three incomplete records are returned.
-    expect(body.count).toBe(3);
-    expect(body.records).toHaveLength(3);
+    // Exactly the four incomplete records are returned.
+    expect(body.count).toBe(4);
+    expect(body.records).toHaveLength(4);
 
     const ids = body.records.map((r) => r.id).sort();
-    expect(ids).toEqual(["g-1", "g-2", "g-3"]);
+    expect(ids).toEqual(["g-1", "g-2", "g-3", "g-4"]);
 
     // No complete record leaked through.
     expect(ids).not.toContain("g-complete");
@@ -69,9 +77,10 @@ describe("GET /api/graves/incomplete (integration)", () => {
 
     // Each incomplete record annotates the canonical missing field names.
     const byId = Object.fromEntries(body.records.map((r) => [r.id, r]));
-    expect(byId["g-1"].missing.sort()).toEqual(["burialDate", "plotId"]);
+    expect(byId["g-1"].missing.sort()).toEqual(["burialDate", "plotGps", "plotId"]);
     expect(byId["g-2"].missing).toEqual(["deceasedName"]);
-    expect(byId["g-3"].missing).toEqual(["plotId"]);
+    expect(byId["g-3"].missing.sort()).toEqual(["plotGps", "plotId"]);
+    expect(byId["g-4"].missing).toEqual(["plotGps"]);
 
     // count matches the number of returned records.
     expect(body.count).toBe(body.records.length);
@@ -80,8 +89,8 @@ describe("GET /api/graves/incomplete (integration)", () => {
   it("returns an empty list with a no-incomplete-records message when all complete (Req 5.5)", async () => {
     allow();
     prisma.grave.findMany.mockResolvedValue([
-      { id: "g-a", deceasedName: "Jane", burialDate: new Date("2020-01-01"), plotId: "p1" },
-      { id: "g-b", deceasedName: "Bob", burialDate: new Date("2018-02-02"), plotId: "p3" },
+      { id: "g-a", deceasedName: "Jane", burialDate: new Date("2020-01-01"), plotId: "p1", plot: pinnedPlot() },
+      { id: "g-b", deceasedName: "Bob", burialDate: new Date("2018-02-02"), plotId: "p3", plot: pinnedPlot("B-3") },
     ]);
 
     const response = await GET(fakeRequest());

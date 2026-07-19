@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Check, ClipboardList, Search, X } from "lucide-react";
+import { Check, ClipboardList, Search, X, Trash2 } from "lucide-react";
 
 function getErrorMessage(body, fallback) {
   return body?.error?.message || body?.error || fallback;
@@ -18,6 +18,7 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sortOrder, setSortOrder] = useState("newest");
   const [trackRef, setTrackRef] = useState("");
   const [tracking, setTracking] = useState(false);
   const [type, setType] = useState("reservation");
@@ -25,6 +26,8 @@ export default function RequestsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState("");
   const [updatingId, setUpdatingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const fetchRequests = useCallback(async () => {
     if (sessionStatus !== "authenticated") return;
@@ -39,6 +42,7 @@ export default function RequestsPage() {
       if (!response.ok) throw new Error(getErrorMessage(body, "Failed to load requests."));
       setRequests(Array.isArray(body) ? body : []);
       setTrackedRequest(null);
+      setCurrentPage(1);
     } catch (requestError) {
       setRequests([]);
       setError(requestError.message || "Failed to load requests.");
@@ -83,32 +87,33 @@ export default function RequestsPage() {
     }
   }
 
-  async function handleTrack(event) {
-    event.preventDefault();
-    const referenceId = trackRef.trim();
-    if (!referenceId) {
-      setError("Enter a reference ID to track.");
-      return;
-    }
-
-    setTracking(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/requests?ref=${encodeURIComponent(referenceId)}`);
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(getErrorMessage(body, "Request not found."));
-      if (!body || Array.isArray(body) || typeof body !== "object") {
-        throw new Error("The request lookup returned an invalid response.");
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      const referenceId = trackRef.trim();
+      if (!referenceId) {
+        setTrackedRequest(null);
+        return;
       }
-      setTrackedRequest(body);
-    } catch (requestError) {
-      setTrackedRequest(null);
-      setError(requestError.message || "Unable to track that request.");
-    } finally {
-      setTracking(false);
-    }
-  }
-
+      setTracking(true);
+      setError("");
+      try {
+        const response = await fetch(`/api/requests?ref=${encodeURIComponent(referenceId)}`);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(getErrorMessage(body, "Request not found."));
+        if (!body || Array.isArray(body) || typeof body !== "object") {
+          throw new Error("The request lookup returned an invalid response.");
+        }
+        setTrackedRequest(body);
+        setCurrentPage(1);
+      } catch (requestError) {
+        setTrackedRequest(null);
+        setError(requestError.message || "Unable to track that request.");
+      } finally {
+        setTracking(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [trackRef]);
 
   async function handleStatusUpdate(id, status) {
     setUpdatingId(id);
@@ -135,7 +140,15 @@ export default function RequestsPage() {
     setError("");
   }
 
-  const visibleRequests = trackedRequest ? [trackedRequest] : requests;
+  const baseRequests = trackedRequest ? [trackedRequest] : requests;
+  const visibleRequests = [...baseRequests].sort((a, b) => {
+    const dateA = new Date(a.createdAt || 0).getTime();
+    const dateB = new Date(b.createdAt || 0).getTime();
+    return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+  });
+  
+  const totalPages = Math.ceil(visibleRequests.length / pageSize);
+  const paginatedRequests = visibleRequests.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="animate-fade-in">
@@ -195,42 +208,56 @@ export default function RequestsPage() {
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: "var(--space-lg)" }}>
-        <div className="flex gap-md items-center" style={{ flexWrap: "wrap" }}>
-          <form onSubmit={handleTrack} className="flex gap-sm" style={{ flex: 1, minWidth: 250 }}>
-            <input
-              type="text"
-              className="form-input"
-              aria-label="Reference ID"
-              placeholder="Track by reference ID..."
-              value={trackRef}
-              onChange={(event) => setTrackRef(event.target.value)}
-              id="track-ref-input"
-            />
-            <button className="btn btn-ghost flex items-center justify-center gap-xs" type="submit" disabled={tracking} id="track-ref-btn">
-              <Search size={18} aria-hidden="true" /> {tracking ? "Tracking..." : "Track"}
-            </button>
-          </form>
-          <select
-            className="form-select"
-            aria-label="Filter by status"
-            value={statusFilter}
-            onChange={(event) => {
-              setStatusFilter(event.target.value);
-              clearTracking();
-            }}
-            style={{ width: 160 }}
-            id="request-status-filter"
-          >
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          {(trackRef || trackedRequest) && (
-            <button className="btn btn-ghost" type="button" onClick={clearTracking}>✕ Clear</button>
-          )}
+      <div className="flex gap-sm items-center mb-lg" style={{ flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 250 }}>
+          <Search size={16} className="text-muted" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+          <input
+            type="text"
+            className="form-input"
+            style={{ paddingLeft: 36 }}
+            aria-label="Reference ID"
+            placeholder="Track by reference ID..."
+            value={trackRef}
+            onChange={(event) => setTrackRef(event.target.value)}
+            id="track-ref-input"
+          />
         </div>
+        <select
+          className="form-select"
+          aria-label="Filter by status"
+          value={statusFilter}
+          onChange={(event) => {
+            setStatusFilter(event.target.value);
+            clearTracking();
+          }}
+          style={{ width: 160 }}
+          id="request-status-filter"
+        >
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        
+        <select 
+          className="form-select" 
+          style={{ width: 160 }}
+          value={sortOrder}
+          onChange={(e) => { setSortOrder(e.target.value); setCurrentPage(1); }}
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+
+        {(trackRef || trackedRequest || statusFilter) && (
+          <button
+            className="btn btn-ghost"
+            onClick={clearTracking}
+            aria-label="Clear tracking"
+          >
+            ✕ Clear
+          </button>
+        )}
       </div>
 
       {loading || sessionStatus === "loading" ? (
@@ -252,8 +279,8 @@ export default function RequestsPage() {
             </thead>
 
             <tbody>
-              {visibleRequests.map((request) => (
-                <tr key={request.id || request.referenceId}>
+              {paginatedRequests.map((request) => (
+                <tr key={request.id}>
                   <td><span className="badge badge-primary" style={{ fontFamily: "var(--font-mono)" }}>{request.referenceId}</span></td>
                   <td className="text-sm">
                     {new Date(request.createdAt).toLocaleDateString()}<br />
@@ -281,12 +308,12 @@ export default function RequestsPage() {
                   {isAdmin && (
                     <td>
                       {request.status === "pending" ? (
-                        <div className="flex gap-xs">
-                          <button className="btn btn-accent flex items-center justify-center" style={{ padding: "0.3rem" }} type="button" disabled={updatingId === request.id} onClick={() => handleStatusUpdate(request.id, "approved")} aria-label={`Approve request ${request.referenceId}`}>
+                        <div className="flex action-buttons">
+                          <button className="action-btn" type="button" disabled={updatingId === request.id} onClick={() => handleStatusUpdate(request.id, "approved")} aria-label={`Approve request ${request.referenceId}`}>
                             <Check size={16} aria-hidden="true" />
                           </button>
-                          <button className="btn btn-danger flex items-center justify-center" style={{ padding: "0.3rem" }} type="button" disabled={updatingId === request.id} onClick={() => handleStatusUpdate(request.id, "rejected")} aria-label={`Reject request ${request.referenceId}`}>
-                            <X size={16} aria-hidden="true" />
+                          <button className="action-btn danger-icon" type="button" disabled={updatingId === request.id} onClick={() => handleStatusUpdate(request.id, "rejected")} aria-label={`Reject request ${request.referenceId}`}>
+                            <Trash2 size={16} aria-hidden="true" />
                           </button>
                         </div>
                       ) : <span className="text-muted text-xs">—</span>}
@@ -296,6 +323,27 @@ export default function RequestsPage() {
               ))}
             </tbody>
           </table>
+          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+            <span className="text-sm text-muted">
+              Showing {visibleRequests.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, visibleRequests.length)} of {visibleRequests.length} records
+            </span>
+            <div className="flex gap-sm">
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage === 1} 
+                onClick={() => setCurrentPage(p => p - 1)}
+              >
+                Previous
+              </button>
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage >= totalPages} 
+                onClick={() => setCurrentPage(p => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="empty-state">

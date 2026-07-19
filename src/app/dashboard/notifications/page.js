@@ -60,7 +60,7 @@ export default function NotificationsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Notifications</h1>
-          <p className="page-subtitle">Updates about your request outcomes</p>
+          <p className="page-subtitle">Announcements and request updates</p>
         </div>
       </div>
 
@@ -84,12 +84,13 @@ export default function NotificationsPage() {
                     <div>
                       <div className="flex items-center gap-sm" style={{ flexWrap: "wrap", marginBottom: 4 }}>
                         <span className={`badge ${isUnread ? "badge-primary" : "badge-muted"}`}>{isUnread ? "Unread" : "Read"}</span>
-                        <span className={`badge ${notification.outcome === "approved" ? "badge-success" : "badge-danger"}`}>{notification.outcome}</span>
+                        <span className="badge badge-muted">{notification.category === "broadcast" ? "Broadcast" : "Request"}</span>
+                        {notification.outcome && <span className={`badge ${notification.outcome === "approved" ? "badge-success" : "badge-danger"}`}>{notification.outcome}</span>}
                       </div>
 
-                      <h2 style={{ fontSize: "1rem", margin: 0 }}>Request {notification.referenceId}</h2>
+                      <h2 style={{ fontSize: "1rem", margin: 0 }}>{notification.title || "Notification"}</h2>
                       <p className="text-sm text-muted" style={{ margin: "4px 0 0" }}>
-                        Your request was {notification.outcome} on {new Date(notification.createdAt).toLocaleString()}.
+                        {notification.message || (notification.referenceId ? `Your request ${notification.referenceId} was ${notification.outcome}.` : "You have a new notification.")} · {new Date(notification.createdAt).toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -99,7 +100,7 @@ export default function NotificationsPage() {
                       type="button"
                       disabled={markingId === notification.id}
                       onClick={() => markAsRead(notification.id)}
-                      aria-label={`Mark notification for request ${notification.referenceId} as read`}
+                      aria-label={`Mark ${notification.title || "notification"} as read`}
                     >
                       {markingId === notification.id ? "Marking..." : "Mark as read"}
                     </button>
@@ -113,7 +114,7 @@ export default function NotificationsPage() {
         <div className="empty-state">
           <div className="empty-state-icon"><Bell size={48} aria-hidden="true" /></div>
           <h2 className="empty-state-title">No Notifications</h2>
-          <p className="empty-state-text">Request outcome updates will appear here.</p>
+          <p className="empty-state-text">Announcements and request updates will appear here.</p>
         </div>
       )}
     </div>

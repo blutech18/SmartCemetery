@@ -73,13 +73,22 @@ describe("POST /api/navigation (integration)", () => {
     const body = await response.json();
 
     expect(response.status).toBe(201);
-    expect(body.id).toBe(1);
+    expect(body).toEqual({ success: true, id: 1 });
 
     expect(prisma.navigation.create).toHaveBeenCalledTimes(1);
     const createArg = prisma.navigation.create.mock.calls[0][0];
-    expect(createArg.data.userId).toBe(7);
-    expect(createArg.data.origin).toBe("1,2");
-    expect(createArg.data.destination).toBe("3,4");
+    expect(createArg).toEqual({
+      data: {
+        userId: 7,
+        origin: "1,2",
+        destination: "3,4",
+        plotId: null,
+        channel: "dashboard",
+        distanceMeters: null,
+        durationSeconds: null,
+      },
+      select: { id: true },
+    });
   });
 
   // Req 12.4-ish at the API layer — destination is required. A request with no
@@ -108,22 +117,41 @@ describe("POST /api/navigation (integration)", () => {
   });
 });
 
-describe("GET /api/navigation (integration)", () => {
-  // Req 12.1 — navigation logs can be listed.
-  it("returns 200 with the list of navigation logs", async () => {
-    const rows = [
-      { id: 2, origin: "5,6", destination: "7,8", user: { id: 1, name: "Alice" } },
-      { id: 1, origin: "1,2", destination: "3,4", user: null },
-    ];
-    prisma.navigation.findMany.mockResolvedValue(rows);
-
+describe("GET /api/navigation (privacy)", () => {
+  it("does not expose raw user-linked navigation logs", async () => {
     const response = await GET(getRequest());
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(Array.isArray(body)).toBe(true);
-    expect(body).toHaveLength(2);
-    expect(body[0].id).toBe(2);
-    expect(prisma.navigation.findMany).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(405);
+    expect(body.error.type).toBe("not_supported");
+    expect(prisma.navigation.findMany).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("POST /api/navigation extended metrics", () => {
+  it("validates and persists plot, channel, distance, and duration without echoing raw coordinates", async () => {
+    prisma.navigation.create.mockResolvedValue({ id: 12 });
+    const response = await POST(postRequest({
+      origin: "private-origin",
+      destination: "private-destination",
+      plotId: 9,
+      channel: "kiosk",
+      distanceMeters: 450,
+      durationSeconds: 320,
+    }));
+    const body = await response.json();
+    expect(response.status).toBe(201);
+    expect(body).toEqual({ success: true, id: 12 });
+    expect(JSON.stringify(body)).not.toContain("private-origin");
+    expect(prisma.navigation.create.mock.calls[0][0].data).toMatchObject({
+      plotId: 9, channel: "kiosk", distanceMeters: 450, durationSeconds: 320,
+    });
+  });
+
+  it("rejects invalid negative metrics", async () => {
+    const response = await POST(postRequest({ destination: "3,4", distanceMeters: -1 }));
+    expect(response.status).toBe(400);
+    expect(prisma.navigation.create).not.toHaveBeenCalled();
   });
 });

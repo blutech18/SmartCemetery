@@ -17,7 +17,7 @@ const NUM_RUNS = 100;
  * `nowMs` (Req 1.2, 1.3).
  */
 function tokenIsValid(token, nowMs) {
-  if (!token || typeof token !== "object") return false;
+  if (!token || typeof token !== "object" || token.disabled === true) return false;
   const { exp } = token;
   if (typeof exp !== "number" || !Number.isFinite(exp)) return false;
   return exp * 1000 > nowMs;
@@ -41,7 +41,8 @@ const arbToken = fc.oneof(
   fc.record({ role: fc.string() }),
   fc.record({ exp: fc.constantFrom(NaN, Infinity, -Infinity) }),
   fc.record({ exp: fc.oneof(fc.string(), fc.boolean()) }),
-  fc.record({ exp: arbExpSeconds, role: fc.string() })
+  fc.record({ exp: arbExpSeconds, role: fc.string() }),
+  fc.record({ exp: arbExpSeconds, role: fc.string(), disabled: fc.constant(true) })
 );
 
 /** Arbitrary path segment for building dashboard subpaths. */

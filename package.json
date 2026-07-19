@@ -9,23 +9,31 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:public": "playwright test e2e/public-responsive.pw.spec.js",
+    "test:e2e:kiosk": "playwright test e2e/kiosk-routing.pw.spec.js",
+    "test:e2e:roles": "playwright test e2e/roles.pw.spec.js",
+    "test:mysql": "node scripts/test-mysql.js",
+    "test:release": "npm run lint && npm test && npm run build",
     "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "db:seed": "node prisma/seed.js"
+    "db:seed": "node prisma/seed.js",
+    "db:setup": "node scripts/setup-db.js",
+    "db:rotate-encryption": "node scripts/rotate-encryption.js"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
+    "@react-google-maps/api": "2.20.8",
     "bcryptjs": "^2.4.3",
     "double-metaphone": "^2.0.1",
     "exceljs": "^4.4.0",
-    "leaflet": "^1.9.4",
     "lucide-react": "^1.23.0",
     "next": "16.2.10",
-    "next-auth": "^4.24.11",
+    "next-auth": "4.24.14",
+    "nodemailer9": "npm:nodemailer@9.0.3",
     "pdfkit": "^0.19.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-leaflet": "^5.0.0",
     "recharts": "^2.15.3",
     "sonner": "^2.0.3"
   },
@@ -36,5 +44,9 @@
     "fast-check": "^4.9.0",
     "prisma": "^6.9.0",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "postcss": "8.5.19",
+    "uuid": "11.1.1"
   }
 }

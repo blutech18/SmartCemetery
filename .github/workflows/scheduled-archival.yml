@@ -1,0 +1,29 @@
+name: Scheduled cemetery archival
+
+on:
+  schedule:
+    - cron: "15 0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: cemetery-archival
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Invoke authenticated archival endpoint
+        env:
+          ARCHIVAL_URL: ${{ secrets.ARCHIVAL_URL }}
+          ARCHIVAL_CRON_SECRET: ${{ secrets.ARCHIVAL_CRON_SECRET }}
+        run: |
+          test -n "$ARCHIVAL_URL"
+          test -n "$ARCHIVAL_CRON_SECRET"
+          RUN_KEY="daily:$(date -u +%F)"
+          curl --fail-with-body --silent --show-error \
+            --request POST "$ARCHIVAL_URL/api/archival" \
+            --header "x-archival-token: $ARCHIVAL_CRON_SECRET" \
+            --header "x-archival-run-key: $RUN_KEY" \
+            --header "content-type: application/json"

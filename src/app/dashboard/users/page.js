@@ -1,11 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users } from "lucide-react";
+import { Users, Search } from "lucide-react";
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortOrder, setSortOrder] = useState("newest");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -58,6 +63,23 @@ export default function UsersPage() {
     setSubmitting(false);
   }
 
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch = !searchQuery || 
+      (u.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (u.email || "").toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = !statusFilter || u.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const sortedUsers = [...filteredUsers].sort((a, b) => {
+    const dateA = new Date(a.createdAt || 0).getTime();
+    const dateB = new Date(b.createdAt || 0).getTime();
+    return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+  });
+
+  const totalPages = Math.ceil(sortedUsers.length / pageSize);
+  const paginatedUsers = sortedUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <div className="animate-fade-in">
       <div className="page-header">
@@ -70,11 +92,54 @@ export default function UsersPage() {
         </button>
       </div>
 
+      <div className="flex gap-sm items-center mb-lg" style={{ flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 250 }}>
+          <Search size={16} className="text-muted" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+          <input
+            type="text"
+            className="form-input"
+            style={{ paddingLeft: 36 }}
+            placeholder="Search users by name or email..."
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+          />
+        </div>
+        <select
+          className="form-select"
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+          style={{ width: 160 }}
+        >
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+
+        <select 
+          className="form-select" 
+          style={{ width: 160 }}
+          value={sortOrder}
+          onChange={(e) => { setSortOrder(e.target.value); setCurrentPage(1); }}
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+
+        {(searchQuery || statusFilter) && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => { setSearchQuery(""); setStatusFilter(""); }}
+          >
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <div className="flex justify-center" style={{ padding: "var(--space-3xl)" }}>
           <div className="spinner spinner-lg" />
         </div>
-      ) : users.length > 0 ? (
+      ) : filteredUsers.length > 0 ? (
         <div className="table-container">
           <table className="table">
             <thead>
@@ -87,7 +152,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {paginatedUsers.map((user) => (
                 <tr key={user.id}>
                   <td>
                     <div className="flex items-center gap-md">
@@ -127,14 +192,35 @@ export default function UsersPage() {
               ))}
             </tbody>
           </table>
+          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+            <span className="text-sm text-muted">
+              Showing {filteredUsers.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredUsers.length)} of {filteredUsers.length} records
+            </span>
+            <div className="flex gap-sm">
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage === 1} 
+                onClick={() => setCurrentPage(p => p - 1)}
+              >
+                Previous
+              </button>
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage >= totalPages || totalPages === 0} 
+                onClick={() => setCurrentPage(p => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="empty-state">
           <div className="empty-state-icon">
             <Users size={48} />
           </div>
-          <h3 className="empty-state-title">No Users</h3>
-          <p className="empty-state-text">Add users to manage the system.</p>
+          <h3 className="empty-state-title">No Users Found</h3>
+          <p className="empty-state-text">No users match your current filters.</p>
         </div>
       )}
 

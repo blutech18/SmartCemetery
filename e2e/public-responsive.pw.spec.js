@@ -152,6 +152,10 @@ for (const { name, path } of PUBLIC_PAGES) {
           window.scrollTo(0, document.documentElement.scrollHeight);
         });
         await page.waitForTimeout(150);
+        // Lazy/hydrated content can increase the document height after the
+        // first scroll. Scroll once more to assert the final settled layout.
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await page.waitForTimeout(100);
         const after = await page.evaluate(() => ({
           scrollY: window.scrollY,
           innerHeight: window.innerHeight,

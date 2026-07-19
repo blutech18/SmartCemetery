@@ -1,10 +1,10 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Archive, MapPin, Map, ClipboardList, Users, MessageSquare, LineChart, Search, LogOut, Menu, Landmark, Bell } from "lucide-react";
+import { LayoutDashboard, Archive, MapPin, Map, ClipboardList, Users, MessageSquare, LineChart, Search, Menu, Landmark, Bell, Megaphone, BarChart3, BadgeCheck } from "lucide-react";
 
 const adminNav = [
   { label: "Dashboard", href: "/dashboard", icon: <LayoutDashboard size={18} /> },
@@ -14,6 +14,9 @@ const adminNav = [
   { label: "Map", href: "/dashboard/map", icon: <Map size={18} /> },
   { label: "Requests", href: "/dashboard/requests", icon: <ClipboardList size={18} /> },
   { label: "Notifications", href: "/dashboard/notifications", icon: <Bell size={18} /> },
+  { label: "Broadcasts", href: "/dashboard/broadcasts", icon: <Megaphone size={18} /> },
+  { label: "Analytics", href: "/dashboard/analytics", icon: <BarChart3 size={18} /> },
+  { label: "Verification", href: "/dashboard/verification", icon: <BadgeCheck size={18} /> },
   { label: "Users", href: "/dashboard/users", icon: <Users size={18} /> },
   { label: "Feedback", href: "/dashboard/feedback", icon: <MessageSquare size={18} /> },
   { label: "Reports", href: "/dashboard/reports", icon: <LineChart size={18} /> },
@@ -26,6 +29,7 @@ const staffNav = [
   { label: "Map", href: "/dashboard/map", icon: <Map size={18} /> },
   { label: "Requests", href: "/dashboard/requests", icon: <ClipboardList size={18} /> },
   { label: "Notifications", href: "/dashboard/notifications", icon: <Bell size={18} /> },
+  { label: "Verification", href: "/dashboard/verification", icon: <BadgeCheck size={18} /> },
   { label: "Feedback", href: "/dashboard/feedback", icon: <MessageSquare size={18} /> },
 ];
 
@@ -53,9 +57,6 @@ export default function DashboardSidebar() {
 
   const role = session?.user?.role || "Client";
   const navItems = getNavItems(role);
-  const initials = session?.user?.name
-    ? session.user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
-    : "??";
 
   return (
     <>
@@ -83,17 +84,12 @@ export default function DashboardSidebar() {
       {/* Sidebar */}
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="sidebar-brand">
-          <div className="sidebar-brand-icon">
-            <Landmark size={24} />
-          </div>
           <div>
-            <div className="sidebar-brand-text">Smart Cemetery</div>
-            <div className="sidebar-brand-sub">Navigation Platform</div>
+            <div className="sidebar-brand-text">Bolonsori Public Cemetery</div>
           </div>
         </div>
 
         <nav className="sidebar-nav">
-          <div className="sidebar-section-title">Navigation</div>
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -106,31 +102,7 @@ export default function DashboardSidebar() {
             </Link>
           ))}
 
-          <div className="sidebar-section-title" style={{ marginTop: "auto" }}>
-            Account
-          </div>
         </nav>
-
-        <div className="sidebar-footer">
-          <div className="flex items-center gap-md" style={{ marginBottom: "0.75rem" }}>
-            <div className="avatar">{initials}</div>
-            <div>
-              <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-                {session?.user?.name || "User"}
-              </div>
-              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                {role}
-              </div>
-            </div>
-          </div>
-          <button
-            className="btn btn-ghost btn-sm w-full flex items-center justify-center gap-xs"
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            id="sidebar-logout"
-          >
-            <LogOut size={16} /> Sign Out
-          </button>
-        </div>
       </aside>
     </>
   );

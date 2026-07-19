@@ -8,7 +8,7 @@ import { validateRecordCompleteness } from "@/lib/validation";
  *
  * Authorized for Admin or Staff (the "verify" resource). Returns every active
  * grave record missing at least one critical field (deceasedName, burialDate,
- * plotId), each annotated with the explicit list of missing field names
+ * plotId, plotGps), each annotated with the explicit list of missing field names
  * (Req 5.2, 5.3). Records with all three fields present are excluded (Req 5.4).
  * When none are incomplete, returns an empty list with an indication that no
  * incomplete records exist (Req 5.5). On a data-source failure, returns a 500
@@ -27,13 +27,18 @@ export async function GET(request) {
         deceasedName: true,
         burialDate: true,
         plotId: true,
+        verificationStatus: true,
+        plot: { select: { plotNumber: true, gpsLat: true, gpsLng: true } },
       },
       orderBy: { createdAt: "desc" },
     });
 
     const records = [];
     for (const grave of graves) {
-      const { isComplete, missing } = validateRecordCompleteness(grave);
+      const plotGps = grave.plot
+        ? { lat: grave.plot.gpsLat, lng: grave.plot.gpsLng }
+        : null;
+      const { isComplete, missing } = validateRecordCompleteness({ ...grave, plotGps });
       if (!isComplete) {
         records.push({
           id: grave.id,
@@ -41,6 +46,9 @@ export async function GET(request) {
           deceasedName: grave.deceasedName,
           burialDate: grave.burialDate,
           plotId: grave.plotId,
+          plotNumber: grave.plot?.plotNumber ?? null,
+          plotGps,
+          verificationStatus: grave.verificationStatus,
         });
       }
     }

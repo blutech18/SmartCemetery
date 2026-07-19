@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Navigation, LocateFixed, AlertTriangle, Loader2 } from "lucide-react";
-import { getClientRoutingConfig } from "../lib/config";
 import {
   evaluateNavigationGate,
   formatRouteSteps,
@@ -13,9 +12,9 @@ import {
  * NavigationOverlay (Requirement 12)
  *
  * Control panel + routing logic for the step-by-step navigation experience.
- * It is intentionally decoupled from the Leaflet map: the route geometry is
- * lifted up via `onRouteChange` so the parent can render the polyline inside
- * the MapContainer (CemeteryMap), keeping map rendering in the map component.
+ * It is intentionally decoupled from the map: the route geometry is lifted up
+ * via `onRouteChange` so the parent (CemeteryMap) renders the polyline on the
+ * Google map, keeping map rendering in the map component.
  *
  * Contract:
  *   - The Client selects a plot; `destination` is its GPS ({ lat, lng }).
@@ -32,9 +31,18 @@ import {
  * @param {{
  *   destination: { lat: number, lng: number } | null,
  *   onRouteChange: (coords: Array<[number, number]> | null) => void,
+ *   plotId?: number,
+ *   channel?: "dashboard" | "kiosk" | "public",
+ *   authenticated?: boolean,
  * }} props
  */
-export default function NavigationOverlay({ destination, onRouteChange }) {
+export default function NavigationOverlay({
+  destination,
+  onRouteChange,
+  plotId,
+  channel = "public",
+  authenticated = false,
+}) {
   const [origin, setOrigin] = useState(null);
   const [steps, setSteps] = useState([]);
   const [status, setStatus] = useState("idle"); // idle | locating | routing | ready | error
@@ -65,10 +73,12 @@ export default function NavigationOverlay({ destination, onRouteChange }) {
         setOrigin(nextOrigin);
         generateRoute(nextOrigin);
       },
-      () => {
-        setStatus("error");
+      (error) => {
+        setStatus(error?.code === 1 ? "denied" : "error");
         setMessage(
-          "Could not determine your location. Please allow location access and try again."
+          error?.code === 1
+            ? "Location access was denied. Allow location access in your browser settings, then try again."
+            : "Could not determine your location. Check location services and try again."
         );
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -94,25 +104,23 @@ export default function NavigationOverlay({ destination, onRouteChange }) {
     setMessage("Generating directions…");
 
     try {
-      const { baseUrl, profile } = getClientRoutingConfig();
-      if (!baseUrl || !profile) {
-        throw new Error("Pedestrian routing service is not configured");
+      const res = await fetch("/api/routing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origin: originCoords, destination }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = new Error(data?.error?.message || "The route could not be generated.");
+        error.type = data?.error?.type;
+        throw error;
       }
-      const url =
-        `${baseUrl}/route/v1/${profile}/` +
-        `${originCoords.lng},${originCoords.lat};${destination.lng},${destination.lat}` +
-        `?overview=full&geometries=geojson&steps=true`;
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Routing request failed (${res.status})`);
-
-      const data = await res.json();
       const route = data?.routes?.[0];
       if (data?.code !== "Ok" || !route?.geometry?.coordinates?.length) {
         throw new Error("No route found");
       }
 
-      // GeoJSON coordinates are [lng, lat]; Leaflet expects [lat, lng].
+      // GeoJSON coordinates are [lng, lat]; the map expects [lat, lng] pairs.
       const coords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
 
       // Flatten legs -> steps (in leg order, then step order) before formatting.
@@ -125,27 +133,35 @@ export default function NavigationOverlay({ destination, onRouteChange }) {
       setStatus("ready");
       setMessage("");
 
-      // On successful route generation, persist the Navigation_Log with origin,
-      // destination and timestamp (createdAt is set server-side) (Req 12.3).
-      persistLog(originCoords, destination);
+      // Usage logging is intentionally separate from public routing. Only an
+      // authenticated dashboard session makes the best-effort log request.
+      if (channel === "dashboard" && authenticated) {
+        persistLog(route);
+      }
     } catch (err) {
-      // Routing failure -> error message, retain current map view, no log
-      // (Req 12.5). We deliberately do NOT clear an already-rendered route so
-      // the Client's current map view is retained.
+      // Routing failure -> error message, retain current map view, no log.
       console.error("Navigation route generation failed:", err);
       setStatus("error");
-      setMessage("The route could not be generated. Please try again.");
+      setMessage(
+        err?.type === "ROUTING_TIMEOUT"
+          ? "The routing service timed out. Please try again."
+          : err?.message || "The route could not be generated. Please try again."
+      );
     }
   }
 
-  function persistLog(originCoords, destinationCoords) {
-    // Fire-and-forget; a logging failure must not affect the rendered route.
+  function persistLog(route) {
+    // Store only a coarse plot destination and aggregate metrics. Precise user
+    // origin coordinates remain in memory and are never persisted.
     fetch("/api/navigation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        origin: `${originCoords.lat},${originCoords.lng}`,
-        destination: `${destinationCoords.lat},${destinationCoords.lng}`,
+        destination: plotId ? `plot:${plotId}` : "cemetery-route",
+        plotId,
+        channel,
+        distanceMeters: Number.isFinite(route?.distance) ? Math.round(route.distance) : undefined,
+        durationSeconds: Number.isFinite(route?.duration) ? Math.round(route.duration) : undefined,
       }),
     }).catch((err) => {
       console.error("Failed to persist navigation log:", err);
@@ -155,6 +171,7 @@ export default function NavigationOverlay({ destination, onRouteChange }) {
   if (!destination) return null;
 
   const isBusy = status === "locating" || status === "routing";
+  const hasError = status === "error" || status === "denied";
 
   return (
     <div className="card" style={{ marginTop: "var(--space-md)" }}>
@@ -194,14 +211,13 @@ export default function NavigationOverlay({ destination, onRouteChange }) {
 
           {message && status !== "ready" && (
             <p
-              role={status === "error" ? "alert" : "status"}
+              role={hasError ? "alert" : "status"}
               className="text-sm"
               style={{
                 marginTop: 8,
-                color:
-                  status === "error"
-                    ? "var(--color-danger, #c0392b)"
-                    : "var(--text-muted, #666)",
+                color: hasError
+                  ? "var(--color-danger, #c0392b)"
+                  : "var(--text-muted, #666)",
               }}
             >
               {message}

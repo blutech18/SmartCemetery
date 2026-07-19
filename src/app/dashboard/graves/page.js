@@ -1,41 +1,58 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Archive } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { Search, Archive, Pencil, Trash2 } from "lucide-react";
+
+const EMPTY_FORM = {
+  deceasedName: "",
+  plotId: "",
+  burialDate: "",
+  causeOfDeath: "",
+  contactPerson: "",
+  contactPhone: "",
+  notes: "",
+};
 
 export default function GravesPage() {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "Admin";
   const [graves, setGraves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const pageSize = 10;
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({
-    deceasedName: "",
-    plotId: "",
-    burialDate: "",
-    causeOfDeath: "",
-    contactPerson: "",
-    contactPhone: "",
-    notes: "",
-  });
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [plots, setPlots] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const fetchGraves = useCallback(async () => {
+    // Skip default fetch if we are actively viewing search results
+    if (searchQuery.trim()) return;
+    
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
+      params.set("page", currentPage);
+      params.set("limit", pageSize);
       const res = await fetch(`/api/graves?${params}`);
       const data = await res.json();
       setGraves(data.graves || []);
+      setTotalPages(data.pagination?.totalPages || 0);
+      setTotalRecords(data.pagination?.total || 0);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, currentPage, searchQuery]);
 
   const fetchPlots = useCallback(async () => {
     try {
@@ -51,29 +68,31 @@ export default function GravesPage() {
     void Promise.resolve().then(() => Promise.all([fetchGraves(), fetchPlots()]));
   }, [fetchGraves, fetchPlots]);
 
-  async function handleSearch(e) {
-    e.preventDefault();
-    if (!searchQuery.trim()) {
-      setSearchResults(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/graves?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
-      setSearchResults(data);
-    } catch (err) {
-      console.error(err);
-    }
-    setLoading(false);
-  }
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!searchQuery.trim()) {
+        setSearchResults(null);
+        return;
+      }
+      setLoading(true);
+      fetch(`/api/graves?q=${encodeURIComponent(searchQuery)}`)
+        .then(res => res.json())
+        .then(data => {
+          setSearchResults(data);
+          setCurrentPage(1);
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch("/api/graves", {
-        method: "POST",
+      const res = await fetch(editingId ? `/api/graves/${editingId}` : "/api/graves", {
+        method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
@@ -83,20 +102,12 @@ export default function GravesPage() {
 
       if (res.ok) {
         setShowModal(false);
-        setForm({
-          deceasedName: "",
-          plotId: "",
-          burialDate: "",
-          causeOfDeath: "",
-          contactPerson: "",
-          contactPhone: "",
-          notes: "",
-        });
-        fetchGraves();
-        fetchPlots();
+        setEditingId(null);
+        setForm(EMPTY_FORM);
+        await Promise.all([fetchGraves(), fetchPlots()]);
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to create record");
+        alert(err.error?.message || err.error || `Failed to ${editingId ? "update" : "create"} record`);
       }
     } catch (err) {
       alert("An error occurred");
@@ -104,9 +115,54 @@ export default function GravesPage() {
     setSubmitting(false);
   }
 
-  const displayGraves = searchResults
-    ? [...(searchResults.exact || []), ...(searchResults.suggestions || [])]
-    : graves;
+  function openCreate() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setShowModal(true);
+  }
+
+  function openEdit(grave) {
+    setEditingId(grave.id);
+    setForm({
+      deceasedName: grave.deceasedName || "",
+      plotId: String(grave.plotId || ""),
+      burialDate: grave.burialDate ? new Date(grave.burialDate).toISOString().slice(0, 10) : "",
+      causeOfDeath: grave.details?.causeOfDeath || "",
+      contactPerson: grave.details?.contactPerson || "",
+      contactPhone: grave.details?.contactPhone || "",
+      notes: grave.details?.notes || "",
+    });
+    setShowModal(true);
+  }
+
+  async function deleteGrave(grave) {
+    if (!confirm(`Permanently delete the eligible record for ${grave.deceasedName}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/graves/${grave.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || data.error || "Failed to delete record");
+      await Promise.all([fetchGraves(), fetchPlots()]);
+    } catch (err) {
+      alert(err.message || "Failed to delete record");
+    }
+  }
+
+  let displayGraves = graves;
+  let currentTotalPages = totalPages;
+  let currentTotalRecords = totalRecords;
+  let currentStart = (currentPage - 1) * pageSize + 1;
+  let currentEnd = Math.min(currentPage * pageSize, totalRecords);
+
+  if (searchResults) {
+    const allSearch = [...(searchResults.exact || []), ...(searchResults.suggestions || [])];
+    currentTotalRecords = allSearch.length;
+    currentTotalPages = Math.ceil(currentTotalRecords / pageSize);
+    displayGraves = allSearch.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+    currentStart = currentTotalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    currentEnd = Math.min(currentPage * pageSize, currentTotalRecords);
+  } else {
+    currentStart = totalRecords === 0 ? 0 : currentStart;
+  }
 
   return (
     <div className="animate-fade-in">
@@ -115,55 +171,50 @@ export default function GravesPage() {
           <h1 className="page-title">Grave Records</h1>
           <p className="page-subtitle">Manage and search burial records</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)} id="add-grave-btn">
-          + Add Record
-        </button>
+        {isAdmin && (
+          <button 
+            className="btn btn-primary-minimal" 
+            onClick={openCreate} 
+            id="add-grave-btn"
+          >
+            + Add Grave Record
+          </button>
+        )}
       </div>
 
       {/* Search & Filters */}
-      <div className="card" style={{ marginBottom: "var(--space-lg)" }}>
-        <div className="flex gap-md items-center" style={{ flexWrap: "wrap" }}>
-          <form onSubmit={handleSearch} style={{ flex: 1, minWidth: 250 }}>
-            <div style={{ position: "relative" }}>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Smart search by name, ID, or year..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                id="grave-search-input"
-              />
-            </div>
-          </form>
-          <select
-            className="form-select"
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setSearchResults(null);
-            }}
-            style={{ width: 160 }}
-            id="grave-status-filter"
-          >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="archived">Archived</option>
-          </select>
-          <button className="btn btn-ghost flex items-center justify-center gap-xs" onClick={handleSearch} id="grave-search-btn">
-            <Search size={18} /> Search
-          </button>
-          {searchResults && (
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
-                setSearchResults(null);
-                setSearchQuery("");
-              }}
-            >
-              ✕ Clear
-            </button>
-          )}
+      <div className="flex gap-sm items-center mb-lg" style={{ flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 250 }}>
+          <Search size={16} className="text-muted" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+          <input
+            type="text"
+            className="form-input"
+            style={{ paddingLeft: 36 }}
+            placeholder="Search by name, ID, or year..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            id="grave-search-input"
+          />
         </div>
+        <select
+          className="form-select"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ width: 160 }}
+          id="grave-status-filter"
+        >
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+        </select>
+        {searchResults && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => setSearchQuery("")}
+          >
+            ✕ Clear
+          </button>
+        )}
       </div>
 
       {/* Phonetic match notice */}
@@ -188,6 +239,8 @@ export default function GravesPage() {
                 <th>Plot</th>
                 <th>Location</th>
                 <th>Status</th>
+                <th>Verification</th>
+                {isAdmin && <th>Actions</th>}
                 {searchResults?.suggestions?.length > 0 && <th>Match</th>}
               </tr>
             </thead>
@@ -228,6 +281,23 @@ export default function GravesPage() {
                       {grave.status}
                     </span>
                   </td>
+                  <td>
+                    <span className={`badge ${grave.verificationStatus === "verified" ? "badge-success" : grave.verificationStatus === "rejected" ? "badge-danger" : "badge-warning"}`}>
+                      {grave.verificationStatus || "pending"}
+                    </span>
+                  </td>
+                  {isAdmin && (
+                    <td>
+                      <div className="flex action-buttons">
+                        <button className="action-btn" onClick={() => openEdit(grave)} title={`Edit ${grave.deceasedName}`} aria-label={`Edit ${grave.deceasedName}`}>
+                          <Pencil size={16} />
+                        </button>
+                        <button className="action-btn danger-icon" onClick={() => deleteGrave(grave)} title={`Delete ${grave.deceasedName}`} aria-label={`Delete ${grave.deceasedName}`}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                   {grave.score !== undefined && (
                     <td>
                       <span className="badge badge-info">
@@ -239,6 +309,28 @@ export default function GravesPage() {
               ))}
             </tbody>
           </table>
+          
+          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+            <span className="text-sm text-muted">
+              Showing {currentStart} to {currentEnd} of {currentTotalRecords} records
+            </span>
+            <div className="flex gap-sm">
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage === 1} 
+                onClick={() => setCurrentPage(p => p - 1)}
+              >
+                Previous
+              </button>
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage >= currentTotalPages || currentTotalPages === 0} 
+                onClick={() => setCurrentPage(p => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="empty-state">
@@ -254,12 +346,12 @@ export default function GravesPage() {
         </div>
       )}
 
-      {/* Add Grave Modal */}
-      {showModal && (
+      {/* Add/Edit Grave Modal */}
+      {showModal && isAdmin && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Add Grave Record</h3>
+              <h3 className="modal-title">{editingId ? "Edit Grave Record" : "Add Grave Record"}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>
                 ✕
               </button>
@@ -287,6 +379,10 @@ export default function GravesPage() {
                     id="grave-form-plot"
                   >
                     <option value="">Select plot...</option>
+                    {editingId && form.plotId && !plots.some((p) => String(p.id) === form.plotId) && (() => {
+                      const current = displayGraves.find((grave) => grave.id === editingId)?.plot;
+                      return <option value={form.plotId}>{current?.plotNumber || `Plot ${form.plotId}`} — current assignment</option>;
+                    })()}
                     {plots.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.plotNumber} — {p.locationDetail?.location?.name}
@@ -347,7 +443,7 @@ export default function GravesPage() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} disabled={submitting} id="grave-form-submit">
-                  {submitting ? "Saving..." : "Save Grave"}
+                  {submitting ? "Saving..." : editingId ? "Save Changes" : "Save Grave"}
                 </button>
               </div>
             </form>

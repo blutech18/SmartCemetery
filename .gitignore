@@ -40,6 +40,15 @@ yarn-error.log*
 /AGENTS.md
 /CLAUDE.md
 
+# database backups & dumps (root only — Prisma migration SQL stays tracked)
+/*.sql
+*.dump
+*.bak
+*.backup
+*.sqlite
+*.sqlite3
+/backups/
+
 # vercel
 .vercel
 

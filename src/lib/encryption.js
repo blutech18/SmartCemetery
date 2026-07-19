@@ -14,7 +14,32 @@ const KEY_LENGTH = 32; // AES-256 requires a 32-byte key
  * Sensitive GraveDetail fields that must be encrypted at rest.
  * `notes` and other fields are intentionally left untouched.
  */
-const SENSITIVE_GRAVE_FIELDS = ["contactPerson", "contactPhone", "causeOfDeath"];
+export const SENSITIVE_GRAVE_FIELDS = [
+  "contactPerson",
+  "contactPhone",
+  "causeOfDeath",
+];
+
+const KEY_VERSION_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
+
+export function getCurrentKeyVersion() {
+  const version = (process.env.ENCRYPTION_KEY_VERSION || "v1").trim();
+  if (!KEY_VERSION_PATTERN.test(version)) {
+    throw new EncryptionKeyError("encryption key version is invalid");
+  }
+  return version;
+}
+
+function previousKeyring() {
+  const raw = process.env.ENCRYPTION_KEY_PREVIOUS;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    throw new EncryptionKeyError("previous encryption keyring is invalid");
+  }
+}
 
 /**
  * Raised when ENCRYPTION_KEY is absent or does not decode to a valid 32-byte key.
@@ -43,19 +68,17 @@ export class DecryptionError extends Error {
  * @returns {Buffer} the validated 32-byte key
  * @throws {EncryptionKeyError} if the key is absent or not exactly 32 bytes
  */
-export function assertKeyValid() {
-  const key = process.env.ENCRYPTION_KEY;
-  if (!key) {
+export function assertKeyValid(version = getCurrentKeyVersion()) {
+  const currentVersion = getCurrentKeyVersion();
+  const key = version === currentVersion
+    ? process.env.ENCRYPTION_KEY
+    : previousKeyring()[version];
+
+  if (!key || typeof key !== "string" || !/^[0-9a-fA-F]{64}$/.test(key)) {
     throw new EncryptionKeyError("encryption key unavailable/invalid");
   }
 
-  let keyBuffer;
-  try {
-    keyBuffer = Buffer.from(key, "hex");
-  } catch {
-    throw new EncryptionKeyError("encryption key unavailable/invalid");
-  }
-
+  const keyBuffer = Buffer.from(key, "hex");
   if (keyBuffer.length !== KEY_LENGTH) {
     throw new EncryptionKeyError("encryption key unavailable/invalid");
   }
@@ -63,16 +86,9 @@ export function assertKeyValid() {
   return keyBuffer;
 }
 
-function getKey() {
-  return assertKeyValid();
-}
-
-/**
- * Encrypt a plaintext string
- * @returns {string} base64 encoded (iv:authTag:ciphertext)
- */
-export function encrypt(plaintext) {
-  const key = getKey();
+/** Encrypt with the configured current key. The version is stored per row. */
+export function encrypt(plaintext, version = getCurrentKeyVersion()) {
+  const key = assertKeyValid(version);
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
@@ -83,15 +99,8 @@ export function encrypt(plaintext) {
   return `${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted}`;
 }
 
-/**
- * Decrypt an encrypted string
- * @param {string} encryptedData - base64 encoded (iv:authTag:ciphertext)
- * @returns {string} decrypted plaintext
- * @throws {DecryptionError} on malformed envelope or failed integrity check
- */
-export function decrypt(encryptedData) {
-  const key = getKey();
-
+/** Decrypt a legacy three-part envelope using its row-level key version. */
+export function decrypt(encryptedData, version = getCurrentKeyVersion()) {
   if (typeof encryptedData !== "string") {
     throw new DecryptionError("value could not be decrypted");
   }
@@ -107,6 +116,7 @@ export function decrypt(encryptedData) {
   }
 
   try {
+    const key = assertKeyValid(version);
     const iv = Buffer.from(ivB64, "base64");
     const authTag = Buffer.from(authTagB64, "base64");
 
@@ -119,11 +129,9 @@ export function decrypt(encryptedData) {
 
     let decrypted = decipher.update(ciphertext, "base64", "utf8");
     decrypted += decipher.final("utf8");
-
     return decrypted;
   } catch (err) {
     if (err instanceof DecryptionError) throw err;
-    // Malformed input or failed GCM auth tag: never return raw/partial value.
     throw new DecryptionError("value could not be decrypted");
   }
 }
@@ -148,44 +156,38 @@ export function encryptField(value) {
  * @returns {string|null} decrypted plaintext, or null
  * @throws {DecryptionError} if the stored value cannot be decrypted
  */
-export function decryptField(value) {
+export function decryptField(value, version = getCurrentKeyVersion()) {
   if (value === null || value === undefined) return null;
-  return decrypt(value);
+  return decrypt(value, version);
 }
 
-/**
- * Encrypt the sensitive fields of a GraveDetail-like object.
- * Only contactPerson, contactPhone, and causeOfDeath are transformed; all
- * other fields (including notes) are preserved untouched.
- * @param {object|null|undefined} detail
- * @returns {object|null} a shallow copy with sensitive fields encrypted
- */
+/** Encrypt every classified GraveDetail field with the current key. */
 export function encryptGraveDetail(detail) {
   if (detail === null || detail === undefined) return detail;
+  const version = getCurrentKeyVersion();
   const result = { ...detail };
   for (const field of SENSITIVE_GRAVE_FIELDS) {
-    if (field in result) {
-      result[field] = encryptField(result[field]);
-    }
+    if (field in result) result[field] = encryptField(result[field]);
   }
+  if ("notes" in result) result.notes = encryptField(result.notes);
+  result.encryptionKeyVersion = version;
+  result.notesEncrypted = Boolean(result.notes);
   return result;
 }
 
 /**
- * Decrypt the sensitive fields of a GraveDetail-like object.
- * Only contactPerson, contactPhone, and causeOfDeath are transformed; all
- * other fields (including notes) are preserved untouched.
- * @param {object|null|undefined} detail
- * @returns {object|null} a shallow copy with sensitive fields decrypted
- * @throws {DecryptionError} if any stored sensitive value cannot be decrypted
+ * Decrypt classified fields with the row key version. Legacy plaintext notes
+ * remain readable until the resumable rotation command encrypts them.
  */
 export function decryptGraveDetail(detail) {
   if (detail === null || detail === undefined) return detail;
   const result = { ...detail };
+  const version = detail.encryptionKeyVersion || "v1";
   for (const field of SENSITIVE_GRAVE_FIELDS) {
-    if (field in result) {
-      result[field] = decryptField(result[field]);
-    }
+    if (field in result) result[field] = decryptField(result[field], version);
+  }
+  if (result.notesEncrypted && "notes" in result) {
+    result.notes = decryptField(result.notes, version);
   }
   return result;
 }

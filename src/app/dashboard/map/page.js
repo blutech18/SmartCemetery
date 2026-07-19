@@ -541,7 +541,14 @@ function MapPageInner() {
             </div>
           )}
 
-          <NavigationOverlay key={detailsPlot.id} destination={detailsDestination} onRouteChange={setRouteCoords} />
+          <NavigationOverlay
+            key={detailsPlot.id}
+            destination={detailsDestination}
+            onRouteChange={setRouteCoords}
+            plotId={detailsPlot.id}
+            channel="dashboard"
+            authenticated={Boolean(session?.user)}
+          />
         </Modal>
       )}
     </div>

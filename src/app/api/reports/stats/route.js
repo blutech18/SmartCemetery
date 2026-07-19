@@ -44,7 +44,7 @@ export async function GET(request) {
     const [graves, plots, requests, feedback, locations, users] =
       await Promise.all([
         prisma.grave.findMany({
-          select: { status: true, burialDate: true, createdAt: true },
+          select: { status: true, burialDate: true, createdAt: true, verificationStatus: true },
         }),
         prisma.plot.findMany({
           select: { status: true, createdAt: true },
@@ -81,6 +81,11 @@ export async function GET(request) {
         totalCount: report.feedback.total,
         distribution: report.feedback.distribution,
       },
+      // Raw grave data for client-side aggregation (burial trends, verification).
+      rawGraves: graves.map((g) => ({
+        burialDate: g.burialDate,
+        verificationStatus: g.verificationStatus,
+      })),
     });
   } catch (error) {
     console.error("GET /api/reports/stats error:", error);

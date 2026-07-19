@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { MapPin, Map, Navigation } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
+import { MapPin, Map, Navigation, Pencil, Power, PowerOff } from "lucide-react";
 
 export default function LocationsPage() {
+  const { data: session, status: sessionStatus } = useSession();
+  const isAdmin = session?.user?.role === "Admin";
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -15,28 +20,66 @@ export default function LocationsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchLocations();
-  }, []);
-
-  async function fetchLocations() {
+  const fetchLocations = useCallback(async () => {
+    if (sessionStatus === "loading") return;
     setLoading(true);
+    setError("");
     try {
-      const res = await fetch("/api/locations");
+      const res = await fetch(isAdmin ? "/api/locations?includeInactive=true" : "/api/locations");
       const data = await res.json();
-      setLocations(data || []);
+      if (!res.ok) throw new Error(data.error?.message || data.error || "Failed to load locations");
+      setLocations(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error(err);
+      setError(err.message || "Failed to load locations");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  }, [isAdmin, sessionStatus]);
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchLocations);
+  }, [fetchLocations]);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm({ name: "", description: "", gpsLat: "", gpsLng: "" });
+    setShowModal(true);
+  }
+
+  function openEdit(location) {
+    setEditingId(location.id);
+    setForm({
+      name: location.name || "",
+      description: location.description || "",
+      gpsLat: location.gpsLat ?? "",
+      gpsLng: location.gpsLng ?? "",
+    });
+    setShowModal(true);
+  }
+
+  async function toggleLocation(location) {
+    const action = location.isActive ? "deactivate" : "reactivate";
+    if (!confirm(`Are you sure you want to ${action} ${location.name}? Existing sections, plots, and map references will be preserved.`)) return;
+    try {
+      const res = await fetch(`/api/locations/${location.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !location.isActive }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || data.error || `Failed to ${action} location`);
+      await fetchLocations();
+    } catch (err) {
+      alert(err.message || `Failed to ${action} location`);
+    }
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch("/api/locations", {
-        method: "POST",
+      const res = await fetch(editingId ? `/api/locations/${editingId}` : "/api/locations", {
+        method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name,
@@ -48,11 +91,12 @@ export default function LocationsPage() {
 
       if (res.ok) {
         setShowModal(false);
+        setEditingId(null);
         setForm({ name: "", description: "", gpsLat: "", gpsLng: "" });
-        fetchLocations();
+        await fetchLocations();
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to create location");
+        alert(err.error?.message || err.error || `Failed to ${editingId ? "update" : "create"} location`);
       }
     } catch {
       alert("An error occurred");
@@ -67,12 +111,18 @@ export default function LocationsPage() {
           <h1 className="page-title">Locations</h1>
           <p className="page-subtitle">Manage cemetery zones and sections</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)} id="add-location-btn">
-          + Add Location
-        </button>
+        {isAdmin && (
+          <button className="btn btn-primary" onClick={openCreate} id="add-location-btn">
+            + Add Location
+          </button>
+        )}
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-lg)" }}>
+          {error} <button className="btn btn-ghost btn-sm" onClick={fetchLocations}>Retry</button>
+        </div>
+      ) : loading ? (
         <div className="flex justify-center" style={{ padding: "var(--space-3xl)" }}>
           <div className="spinner spinner-lg" />
         </div>
@@ -89,52 +139,78 @@ export default function LocationsPage() {
             ) || 0;
 
             return (
-              <div key={loc.id} className="card">
-                <div className="flex items-center gap-md" style={{ marginBottom: 12 }}>
-                  <div
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: "var(--radius-md)",
-                      background: "var(--primary-glow)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "1.3rem",
-                    }}
-                  >
-                    <MapPin size={24} />
-                  </div>
-                  <div>
-                    <h4 style={{ margin: 0 }}>{loc.name}</h4>
-                    {loc.description && (
-                      <p className="text-sm text-muted" style={{ margin: 0 }}>
-                        {loc.description}
-                      </p>
+              <div key={loc.id} className="card flex flex-col justify-between" style={{ padding: 0, overflow: 'hidden' }}>
+                <div style={{ padding: "var(--space-lg)" }}>
+                  <div className="flex justify-between items-start" style={{ marginBottom: "var(--space-md)" }}>
+                    <div className="flex items-center gap-md">
+                      <MapPin size={36} className="text-primary" />
+                      <div>
+                        <div className="flex items-center gap-sm">
+                          <h4 style={{ margin: 0, fontSize: "1.1rem" }}>{loc.name}</h4>
+                          {!loc.isActive && <span className="badge badge-muted">Inactive</span>}
+                        </div>
+                        {loc.description && (
+                          <p className="text-sm text-muted" style={{ margin: "4px 0 0 0" }}>
+                            {loc.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-xs">
+                        <button className="action-btn" onClick={() => openEdit(loc)} title={`Edit ${loc.name}`}>
+                          <Pencil size={16} />
+                        </button>
+                        <button 
+                          className={`action-btn ${loc.isActive ? 'danger-icon' : ''}`} 
+                          onClick={() => toggleLocation(loc)} 
+                          title={`${loc.isActive ? "Deactivate" : "Reactivate"} ${loc.name}`}
+                        >
+                          {loc.isActive ? <PowerOff size={16} /> : <Power size={16} />}
+                        </button>
+                      </div>
                     )}
                   </div>
+
+                  {/* Subsections */}
+                  {loc.details?.length > 0 && (
+                    <div style={{ marginTop: "var(--space-md)" }}>
+                      <div className="text-xs text-muted" style={{ marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Subsections
+                      </div>
+                      <div className="flex gap-sm" style={{ flexWrap: "wrap" }}>
+                        {loc.details.map((d) => (
+                          <span key={d.id} style={{ 
+                            fontSize: "0.75rem", 
+                            padding: "4px 10px", 
+                            background: "rgba(255,255,255,0.05)", 
+                            border: "1px solid var(--border-default)",
+                            borderRadius: "var(--radius-full)",
+                            color: "var(--text-secondary)",
+                            display: "inline-flex",
+                            alignItems: "center"
+                          }}>
+                            <span style={{ fontWeight: 600, color: "var(--text-primary)", marginRight: 4 }}>{d.subsection}</span> 
+                            {d.plots?.length || 0} plots
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Subsections */}
-                {loc.details?.length > 0 && (
-                  <div style={{ marginTop: 8 }}>
-                    <div className="text-xs text-muted" style={{ marginBottom: 6, fontWeight: 600 }}>
-                      SUBSECTIONS
+                <div className="flex justify-between items-center" style={{ 
+                  padding: "var(--space-md) var(--space-lg)", 
+                  background: "rgba(0,0,0,0.15)", 
+                  borderTop: "1px solid var(--border-default)" 
+                }}>
+                  <div className="flex gap-lg text-sm">
+                    <div>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{totalPlots}</span> <span className="text-muted">Plots</span>
                     </div>
-                    <div className="flex gap-sm" style={{ flexWrap: "wrap" }}>
-                      {loc.details.map((d) => (
-                        <span key={d.id} className="badge badge-primary">
-                          {d.subsection} ({d.plots?.length || 0} plots)
-                        </span>
-                      ))}
+                    <div>
+                      <span style={{ fontWeight: 600, color: "var(--success)" }}>{availablePlots}</span> <span className="text-muted">Available</span>
                     </div>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center" style={{ marginTop: 12 }}>
-                  <div className="text-sm">
-                    <span style={{ fontWeight: 600 }}>{totalPlots}</span> total plots ·{" "}
-                    <span style={{ color: "var(--success)" }}>{availablePlots}</span> available
                   </div>
                   {loc.gpsLat && loc.gpsLng && (
                     <div className="text-xs text-muted flex items-center gap-xs">
@@ -158,12 +234,12 @@ export default function LocationsPage() {
         </div>
       )}
 
-      {/* Add Location Modal */}
-      {showModal && (
+      {/* Add/Edit Location Modal */}
+      {showModal && isAdmin && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Add Location</h3>
+              <h3 className="modal-title">{editingId ? "Edit Location" : "Add Location"}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>
                 ✕
               </button>
@@ -219,7 +295,7 @@ export default function LocationsPage() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} disabled={submitting} id="location-form-submit">
-                  {submitting ? "Saving..." : "Save Location"}
+                  {submitting ? "Saving..." : editingId ? "Save Changes" : "Save Location"}
                 </button>
               </div>
             </form>

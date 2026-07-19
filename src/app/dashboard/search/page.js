@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Archive } from "lucide-react";
+import Link from "next/link";
+import { Search, Archive, MapPin } from "lucide-react";
 
 export default function DashboardSearchPage() {
   const [query, setQuery] = useState("");
@@ -23,7 +24,8 @@ export default function DashboardSearchPage() {
   }
 
   const allResults = results
-    ? [...(results.exact || []), ...(results.suggestions || [])]
+    ? [...(results.exact || []), ...(results.suggestions || []), ...(results.nearby || [])]
+        .filter((grave, index, items) => items.findIndex((item) => item.id === grave.id) === index)
     : [];
 
   return (
@@ -99,6 +101,15 @@ export default function DashboardSearchPage() {
                     <span className="badge badge-info">
                       {Math.round(grave.score * 100)}% match
                     </span>
+                  )}
+                  {grave.plot?.id && (
+                    <Link
+                      href={`/dashboard/map?plot=${encodeURIComponent(grave.plot.id)}`}
+                      className="btn btn-primary btn-sm flex items-center gap-xs"
+                      aria-label={`Open map directions to ${grave.deceasedName}`}
+                    >
+                      <MapPin size={15} aria-hidden="true" /> Map route
+                    </Link>
                   )}
                 </div>
               </div>

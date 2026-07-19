@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Landmark, Search, Archive, MapPin, ChevronRight, User } from "lucide-react";
+import { PublicThemeToggle } from "@/components/ui/PublicThemeToggle";
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -60,6 +61,7 @@ function SearchContent() {
           <span>Bolonsori Public Cemetery</span>
         </Link>
         <div className="premium-nav-links">
+          <PublicThemeToggle />
           <Link href="/login" className="btn btn-ghost" style={{ width: '44px', padding: 0 }} aria-label="Admin Login" title="Admin Login">
             <User size={20} />
           </Link>
@@ -136,8 +138,20 @@ function SearchContent() {
               </div>
             )}
 
+            {/* Nearby sections */}
+            {results.nearby?.length > 0 && (
+              <div className="flex flex-col gap-md" style={{ marginTop: "2rem" }}>
+                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: '1rem', paddingLeft: '0.5rem' }}>Nearby Sections</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {results.nearby.map((grave) => (
+                    <GraveCard key={grave.id} grave={grave} />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* No results */}
-            {results.exact?.length === 0 && results.suggestions?.length === 0 && (
+            {results.exact?.length === 0 && results.suggestions?.length === 0 && results.nearby?.length === 0 && (
               <div className="empty-state" style={{ background: 'rgba(30, 41, 59, 0.3)', backdropFilter: 'blur(16px)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', padding: '4rem 2rem' }}>
                 <div className="empty-state-icon" style={{ color: 'var(--text-muted)', opacity: 0.5, fontSize: '4rem', marginBottom: '1.5rem' }}>
                   <Search size={56} />
@@ -199,6 +213,15 @@ function GraveCard({ grave, showScore }) {
         </span>
         {showScore && grave.score && (
           <span className="badge badge-info" style={{ fontSize: '0.7rem', opacity: 0.8 }}>Match {Math.round(grave.score * 100)}%</span>
+        )}
+        {grave.plot?.id && (
+          <Link
+            href={`/kiosk?grave=${encodeURIComponent(grave.id)}`}
+            className="btn btn-primary btn-sm flex items-center gap-xs"
+            aria-label={`Open map directions to ${grave.deceasedName}`}
+          >
+            <MapPin size={15} aria-hidden="true" /> Map route
+          </Link>
         )}
       </div>
     </div>

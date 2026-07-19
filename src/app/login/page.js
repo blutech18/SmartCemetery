@@ -5,6 +5,8 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Landmark, AlertTriangle, ArrowRight, Lock, Mail, ChevronLeft, Eye, EyeOff } from "lucide-react";
+import { PublicThemeToggle } from "@/components/ui/PublicThemeToggle";
+import { toast } from "sonner";
 import { resolveCallback } from "@/lib/route-access";
 
 function LoginForm() {
@@ -18,7 +20,10 @@ function LoginForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
+    
     setError("");
+    toast.dismiss("login-error");
     setLoading(true);
 
     try {
@@ -29,8 +34,13 @@ function LoginForm() {
       });
 
       if (result?.error) {
-        setError("Invalid email or password. Please try again.");
+        const message = result.error === "CredentialsSignin" 
+          ? "Invalid email or password. Please try again."
+          : result.error;
+        setError(message);
+        toast.error(message, { id: "login-error", duration: 4000 });
       } else {
+        toast.dismiss("login-error");
         // Honor only safe internal /dashboard callbacks; otherwise fall back
         // to the default /dashboard (Req 1.5).
         const target = resolveCallback(searchParams.get("callbackUrl"));
@@ -38,7 +48,9 @@ function LoginForm() {
         router.refresh();
       }
     } catch {
-      setError("An unexpected error occurred. Please try again.");
+      const message = "An unexpected error occurred. Please try again.";
+      setError(message);
+      toast.error(message, { id: "login-error", duration: 4000 });
     } finally {
       setLoading(false);
     }
@@ -66,27 +78,10 @@ function LoginForm() {
 
       {/* Form Area */}
       <div className="auth-form-container">
+        <PublicThemeToggle className="auth-theme-toggle" />
         <div className="auth-card-premium">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary-light)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-              <Landmark size={20} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: "1.1rem", letterSpacing: "-0.01em", color: '#fff' }}>Smart Cemetery</div>
-              <div style={{ fontSize: "0.65rem", color: "var(--primary-light)", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>
-                Admin Portal
-              </div>
-            </div>
-          </div>
-
           <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#fff', marginBottom: '0.5rem', letterSpacing: '-0.01em' }}>Welcome Back</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '2rem' }}>Sign in to access your secure dashboard</p>
-
-          {error && (
-            <div className="alert alert-error flex items-center gap-sm" style={{ marginBottom: "1.5rem", animation: "fadeInUp 0.3s ease-out", background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--danger-light)', borderRadius: '12px', padding: '1rem' }}>
-              <AlertTriangle size={18} /> <span style={{ fontSize: '0.9rem' }}>{error}</span>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div>
@@ -99,8 +94,14 @@ function LoginForm() {
                   className="form-input"
                   placeholder="admin@cemetery.gov.ph"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError("");
+                  }}
+                  aria-invalid={error ? "true" : undefined}
+                  aria-describedby={error ? "login-credentials-error" : undefined}
                   required
+                  disabled={loading}
                   autoFocus
                 />
               </div>
@@ -116,12 +117,19 @@ function LoginForm() {
                   className="form-input"
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (error) setError("");
+                  }}
+                  aria-invalid={error ? "true" : undefined}
+                  aria-describedby={error ? "login-credentials-error" : undefined}
                   required
+                  disabled={loading}
                   style={{ paddingRight: '2.5rem' }}
                 />
                 <button
                   type="button"
+                  disabled={loading}
                   onClick={() => setShowPassword(!showPassword)}
                   style={{
                     position: 'absolute',
@@ -167,6 +175,17 @@ function LoginForm() {
               )}
             </button>
           </form>
+
+          <div
+            id="login-credentials-error"
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            <AlertTriangle size={16} aria-hidden="true" />
+            {error}
+          </div>
 
           {/* Mobile Back Link */}
           <div style={{ marginTop: '2.5rem', textAlign: 'center', display: 'block' }} className="mobile-only-link">

@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { MessageSquare, Star } from "lucide-react";
+import { MessageSquare, Star, Send, Activity, User, Calendar, Quote, CheckCircle2 } from "lucide-react";
+import { PageHeader } from "../../../components/dashboard/PageHeader";
+import { Panel } from "../../../components/ui/Panel";
+import { Skeleton } from "../../../components/ui/Skeleton";
+import { Badge } from "../../../components/ui/Badge";
 
 function getErrorMessage(body, fallback) {
   return body?.error?.message || body?.error || fallback;
@@ -11,10 +15,13 @@ function getErrorMessage(body, fallback) {
 export default function FeedbackPage() {
   const { data: session, status: sessionStatus } = useSession();
   const isAdmin = session?.user?.role === "Admin";
+  
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [rating, setRating] = useState("");
+  
+  const [rating, setRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState("");
@@ -51,7 +58,7 @@ export default function FeedbackPage() {
     setSuccess("");
 
     if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
-      setError("Select a rating from 1 to 5.");
+      setError("Please select a star rating.");
       return;
     }
     if (trimmedComment.length > 1000) {
@@ -68,9 +75,9 @@ export default function FeedbackPage() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(getErrorMessage(body, "Failed to submit feedback."));
-      setRating("");
+      setRating(0);
       setComment("");
-      setSuccess(`Thank you for your feedback. Submission ID: ${body.id}`);
+      setSuccess(`Thank you for your feedback! Submission ID: ${body.id}`);
     } catch (feedbackError) {
       setError(feedbackError.message || "Failed to submit feedback.");
     } finally {
@@ -78,11 +85,13 @@ export default function FeedbackPage() {
     }
   }
 
+  // --- Calculations for Admin Dashboard ---
   const averageRating = feedbacks.length
-    ? (feedbacks.reduce((sum, feedback) => sum + feedback.rating, 0) / feedbacks.length).toFixed(1)
+    ? (feedbacks.reduce((sum, f) => sum + f.rating, 0) / feedbacks.length).toFixed(1)
     : "—";
+  
   const ratingDistribution = [5, 4, 3, 2, 1].map((value) => {
-    const count = feedbacks.filter((feedback) => feedback.rating === value).length;
+    const count = feedbacks.filter((f) => f.rating === value).length;
     return {
       rating: value,
       count,
@@ -90,122 +99,232 @@ export default function FeedbackPage() {
     };
   });
 
+  // --- USER VIEW (Submit Feedback) ---
   if (!isAdmin && sessionStatus !== "loading") {
     return (
-      <div className="animate-fade-in">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Feedback</h1>
-            <p className="page-subtitle">Share your experience with the Smart Cemetery platform</p>
-          </div>
-        </div>
+      <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "var(--space-xl)", paddingBottom: "var(--space-2xl)", maxWidth: 800, margin: "0 auto" }}>
+        <PageHeader 
+          title="Provide Feedback"
+          description="We're constantly working to improve Smart Cemetery. Share your experience with us!"
+        />
 
-        {success && <div className="card" role="status" aria-live="polite" style={{ marginBottom: "var(--space-lg)", color: "var(--accent)" }}>{success}</div>}
-        {error && <div className="card" role="alert" style={{ marginBottom: "var(--space-lg)", color: "var(--danger)" }}>{error}</div>}
-        <form className="card" onSubmit={handleSubmit}>
-          <div className="form-group" style={{ marginBottom: "var(--space-md)" }}>
-            <label className="form-label" htmlFor="feedback-rating">Rating</label>
-            <select id="feedback-rating" className="form-select" required value={rating} onChange={(event) => setRating(event.target.value)}>
-              <option value="">Select a rating</option>
-              <option value="5">5 — Excellent</option>
-              <option value="4">4 — Good</option>
-              <option value="3">3 — Average</option>
-              <option value="2">2 — Poor</option>
-              <option value="1">1 — Very poor</option>
-            </select>
-          </div>
-          <div className="form-group" style={{ marginBottom: "var(--space-md)" }}>
-            <label className="form-label" htmlFor="feedback-comment">Comment (optional)</label>
-            <textarea
-              id="feedback-comment"
-              className="form-input"
-              rows={6}
-              maxLength={1000}
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Tell us what worked well or what we can improve..."
-            />
-            <div className="text-xs text-muted" style={{ textAlign: "right" }}>{comment.length}/1000</div>
-          </div>
-          <button className="btn btn-primary" type="submit" disabled={submitting}>
-            {submitting ? "Submitting..." : "Submit Feedback"}
-          </button>
+        {success && (
+          <Panel style={{ border: "1px solid var(--primary)", background: "rgba(46, 204, 113, 0.05)" }}>
+            <div className="flex items-center gap-md">
+              <CheckCircle2 size={24} style={{ color: "var(--primary)" }} />
+              <div>
+                <h3 style={{ margin: 0, color: "var(--text-primary)" }}>Feedback Submitted</h3>
+                <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "0.875rem" }}>{success}</p>
+              </div>
+            </div>
+          </Panel>
+        )}
+        
+        {error && (
+          <Panel style={{ border: "1px solid var(--danger)", background: "rgba(239, 68, 68, 0.05)" }}>
+            <p style={{ margin: 0, color: "var(--danger)" }}>{error}</p>
+          </Panel>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <Panel className="flex flex-col gap-xl">
+            <div className="flex flex-col items-center justify-center text-center gap-sm" style={{ padding: "var(--space-md) 0" }}>
+              <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 600 }}>How would you rate your experience?</h3>
+              <div className="flex gap-xs" style={{ marginTop: "var(--space-sm)" }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button 
+                    type="button" 
+                    key={star} 
+                    onClick={() => setRating(star)} 
+                    onMouseEnter={() => setHoverRating(star)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: "0 4px", outline: "none" }}
+                  >
+                    <Star 
+                      size={42} 
+                      fill={(hoverRating || rating) >= star ? "var(--warning)" : "transparent"} 
+                      color={(hoverRating || rating) >= star ? "var(--warning)" : "var(--border-default)"} 
+                      style={{ transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)', transform: (hoverRating || rating) >= star ? "scale(1.1)" : "scale(1)" }}
+                    />
+                  </button>
+                ))}
+              </div>
+              <p className="text-muted text-sm" style={{ marginTop: 8 }}>
+                {rating === 1 && "Very Poor"}
+                {rating === 2 && "Poor"}
+                {rating === 3 && "Average"}
+                {rating === 4 && "Good"}
+                {rating === 5 && "Excellent"}
+                {!rating && "Select a star rating"}
+              </p>
+            </div>
+
+            <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <label className="form-label font-medium" htmlFor="feedback-comment" style={{ fontSize: "1rem" }}>
+                Additional Comments (Optional)
+              </label>
+              <textarea
+                id="feedback-comment"
+                className="form-input"
+                rows={5}
+                maxLength={1000}
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                placeholder="Tell us what worked well or what we could improve..."
+                style={{ 
+                  background: "var(--bg-panel)", 
+                  border: "1px solid var(--border-default)", 
+                  borderRadius: "var(--radius-md)", 
+                  padding: "16px",
+                  fontSize: "0.95rem",
+                  resize: "vertical"
+                }}
+              />
+              <div className="text-xs text-muted" style={{ textAlign: "right" }}>{comment.length} / 1000 characters</div>
+            </div>
+
+            <div className="flex justify-end pt-sm" style={{ borderTop: "1px solid var(--border-default)" }}>
+              <button 
+                className="btn btn-primary flex items-center gap-xs" 
+                type="submit" 
+                disabled={submitting || rating === 0}
+                style={{ padding: "10px 24px", fontSize: "1rem" }}
+              >
+                {submitting ? (
+                  <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Submitting...</>
+                ) : (
+                  <><Send size={18} /> Submit Feedback</>
+                )}
+              </button>
+            </div>
+          </Panel>
         </form>
       </div>
     );
   }
 
+  // --- ADMIN VIEW (Review Feedback) ---
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Feedback</h1>
-          <p className="page-subtitle">User satisfaction and system feedback</p>
-        </div>
-      </div>
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "var(--space-xl)", paddingBottom: "var(--space-2xl)" }}>
+      <PageHeader 
+        title="Feedback Responses"
+        description="Review user satisfaction ratings and system feedback."
+      />
 
-      {error && <div className="card" role="alert" style={{ marginBottom: "var(--space-lg)", color: "var(--danger)" }}>{error}</div>}
-
-      <div className="grid grid-2" style={{ marginBottom: "var(--space-xl)" }}>
-        <div className="card">
-          <div className="text-center">
-            <div style={{ fontSize: "3rem", fontWeight: 900, lineHeight: 1 }}>{averageRating}</div>
-            <div aria-label={`${averageRating} out of 5 stars`} style={{ fontSize: "1.5rem", margin: "4px 0", display: "flex", justifyContent: "center", gap: 2, color: "var(--warning)" }}>
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Star key={index} size={24} aria-hidden="true" fill={index < Math.round(Number(averageRating) || 0) ? "currentColor" : "transparent"} />
-              ))}
-            </div>
-            <div className="text-sm text-muted">{feedbacks.length} total responses</div>
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 style={{ fontSize: "1rem", marginBottom: 12 }}>Rating Distribution</h2>
-          {ratingDistribution.map((item) => (
-            <div key={item.rating} className="flex items-center gap-sm" style={{ marginBottom: 6 }}>
-              <span className="text-sm flex items-center gap-xs" style={{ width: 30 }}>{item.rating} <Star size={12} aria-hidden="true" fill="currentColor" color="var(--warning)" /></span>
-              <div className="progress-bar" style={{ flex: 1 }} role="progressbar" aria-label={`${item.rating} star ratings`} aria-valuenow={item.percentage} aria-valuemin={0} aria-valuemax={100}>
-                <div className="progress-fill" style={{ width: `${item.percentage}%` }} />
-              </div>
-              <span className="text-xs text-muted" style={{ width: 40, textAlign: "right" }}>{item.count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {loading || sessionStatus === "loading" ? (
-        <div className="flex justify-center" style={{ padding: "var(--space-3xl)" }} role="status" aria-label="Loading feedback">
-          <div className="spinner spinner-lg" />
-        </div>
-      ) : feedbacks.length ? (
-        <div className="flex flex-col gap-md">
-          {feedbacks.map((feedback) => (
-            <div key={feedback.id} className="card">
-              <div className="flex justify-between items-center" style={{ marginBottom: 8, flexWrap: "wrap", gap: "var(--space-sm)" }}>
-                <div className="flex items-center gap-md">
-                  <div className="avatar" aria-hidden="true" style={{ width: 32, height: 32, fontSize: "0.7rem" }}>
-                    {feedback.user?.name?.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "??"}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{feedback.user?.name || "Anonymous"}</div>
-                    <div className="text-xs text-muted">{new Date(feedback.createdAt).toLocaleDateString()}</div>
-                  </div>
-                </div>
-                <div aria-label={`${feedback.rating} out of 5 stars`} style={{ color: "var(--warning)", display: "flex", gap: 2 }}>
-                  {Array.from({ length: 5 }).map((_, index) => <Star key={index} size={16} aria-hidden="true" fill={index < feedback.rating ? "currentColor" : "transparent"} />)}
-                </div>
-              </div>
-              {feedback.comment && <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--text-secondary)" }}>{feedback.comment}</p>}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="empty-state">
-          <div className="empty-state-icon"><MessageSquare size={48} aria-hidden="true" /></div>
-          <h3 className="empty-state-title">No Feedback Yet</h3>
-          <p className="empty-state-text">Feedback from users will appear here.</p>
-        </div>
+      {error && (
+        <Panel style={{ border: "1px solid var(--danger)", background: "rgba(239, 68, 68, 0.05)" }}>
+          <p style={{ margin: 0, color: "var(--danger)" }}>{error}</p>
+        </Panel>
       )}
+
+      {/* Analytics Summary */}
+      <div className="grid grid-2 gap-lg">
+        <Panel className="flex flex-col items-center justify-center text-center gap-md" style={{ padding: "32px" }}>
+          <h3 style={{ margin: 0, color: "var(--text-secondary)", fontSize: "1.1rem", fontWeight: 500 }}>Average Rating</h3>
+          <div style={{ fontSize: "4.5rem", fontWeight: 800, lineHeight: 1, color: "var(--text-primary)" }}>{averageRating}</div>
+          <div aria-label={`${averageRating} out of 5 stars`} className="flex gap-xs" style={{ color: "var(--warning)" }}>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Star key={index} size={28} fill={index < Math.round(Number(averageRating) || 0) ? "currentColor" : "transparent"} strokeWidth={1.5} />
+            ))}
+          </div>
+          <Badge variant="default" style={{ marginTop: 8 }}>{feedbacks.length} total responses</Badge>
+        </Panel>
+
+        <Panel className="flex flex-col justify-center" style={{ padding: "32px" }}>
+          <h3 style={{ margin: "0 0 20px 0", color: "var(--text-secondary)", fontSize: "1.1rem", fontWeight: 500 }}>Rating Distribution</h3>
+          <div className="flex flex-col gap-sm">
+            {ratingDistribution.map((item) => (
+              <div key={item.rating} className="flex items-center gap-md">
+                <span className="flex items-center gap-xs text-sm font-medium" style={{ width: 32, color: "var(--text-primary)" }}>
+                  {item.rating} <Star size={14} fill="var(--warning)" color="var(--warning)" />
+                </span>
+                <div 
+                  className="progress-bar" 
+                  style={{ flex: 1, height: 8, background: "var(--border-default)", borderRadius: 4, overflow: "hidden" }} 
+                >
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${item.percentage}%`, height: "100%", background: "var(--primary)", borderRadius: 4, transition: "width 0.5s ease" }} 
+                  />
+                </div>
+                <span className="text-sm font-medium" style={{ width: 40, textAlign: "right", color: "var(--text-secondary)" }}>
+                  {item.percentage}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      {/* Feedback List */}
+      <div>
+        <h2 style={{ fontSize: "1.2rem", fontWeight: 600, marginBottom: "var(--space-md)", display: "flex", alignItems: "center", gap: 8 }}>
+          <MessageSquare size={20} className="text-primary" /> Recent Responses
+        </h2>
+        
+        {loading || sessionStatus === "loading" ? (
+          <div className="flex flex-col gap-md">
+            {[1, 2, 3].map(i => (
+              <Panel key={i} className="flex flex-col gap-sm">
+                <Skeleton style={{ width: "100%", height: 40 }} />
+              </Panel>
+            ))}
+          </div>
+        ) : feedbacks.length ? (
+          <Panel style={{ padding: 0, overflow: "hidden" }}>
+            <div className="table-container" style={{ margin: 0 }}>
+              <table className="table" style={{ width: "100%", minWidth: "600px" }}>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Date</th>
+                    <th style={{ textAlign: "center" }}>Rating</th>
+                    <th>Comment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feedbacks.map((feedback) => (
+                    <tr key={feedback.id}>
+                      <td style={{ verticalAlign: "top", paddingTop: "16px" }}>
+                        <div className="flex items-center gap-sm">
+                          <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{feedback.user?.name || "Anonymous"}</span>
+                        </div>
+                      </td>
+                      <td style={{ verticalAlign: "top", paddingTop: "16px", color: "var(--text-muted)", fontSize: "0.875rem", whiteSpace: "nowrap" }}>
+                        {new Date(feedback.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td style={{ verticalAlign: "top", paddingTop: "16px", textAlign: "center" }}>
+                        <div className="flex gap-xs justify-center" style={{ color: "var(--warning)" }}>
+                          {Array.from({ length: 5 }).map((_, index) => (
+                            <Star key={index} size={14} fill={index < feedback.rating ? "currentColor" : "transparent"} strokeWidth={index < feedback.rating ? 0 : 1.5} />
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ verticalAlign: "top", paddingTop: "16px", paddingBottom: "16px" }}>
+                        {feedback.comment ? (
+                          <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.5 }}>
+                            {feedback.comment}
+                          </div>
+                        ) : (
+                          <span className="text-muted italic text-sm">No comment provided</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        ) : (
+          <Panel className="flex flex-col items-center justify-center text-center" style={{ padding: "48px 24px", borderStyle: "dashed" }}>
+            <div style={{ background: "rgba(255, 255, 255, 0.05)", padding: 20, borderRadius: "50%", marginBottom: 16 }}>
+              <MessageSquare size={32} className="text-muted" />
+            </div>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "1.2rem" }}>No Feedback Yet</h3>
+            <p className="text-muted" style={{ margin: 0, maxWidth: 400 }}>When users submit ratings and feedback, they will appear here for you to review.</p>
+          </Panel>
+        )}
+      </div>
     </div>
   );
 }

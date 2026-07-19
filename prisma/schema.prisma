@@ -30,12 +30,16 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  userType      UserType       @relation(fields: [userTypeId], references: [id])
-  logs          UserLog[]
-  requests      Request[]
-  feedbacks     Feedback[]
-  navigations   Navigation[]
-  notifications Notification[]
+  userType             UserType            @relation(fields: [userTypeId], references: [id])
+  logs                 UserLog[]
+  requests             Request[]
+  feedbacks            Feedback[]
+  navigations          Navigation[]
+  notifications        Notification[]
+  deactivatedLocations Location[]          @relation("LocationDeactivatedBy")
+  verifiedGraves       Grave[]             @relation("GraveVerifiedBy")
+  broadcasts           Broadcast[]
+  broadcastDeliveries  BroadcastDelivery[]
 
   @@map("users")
 }
@@ -43,15 +47,21 @@ model User {
 // ─── LOCATION MANAGEMENT ──────────────────────────────────────
 
 model Location {
-  id          Int              @id @default(autoincrement())
-  name        String           @db.VarChar(100)
-  description String?          @db.Text
-  gpsLat      Decimal?         @map("gps_lat") @db.Decimal(10, 8)
-  gpsLng      Decimal?         @map("gps_lng") @db.Decimal(11, 8)
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  details     LocationDetail[]
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(100)
+  description     String?   @db.Text
+  gpsLat          Decimal?  @map("gps_lat") @db.Decimal(10, 8)
+  gpsLng          Decimal?  @map("gps_lng") @db.Decimal(11, 8)
+  isActive        Boolean   @default(true) @map("is_active")
+  deactivatedAt   DateTime? @map("deactivated_at")
+  deactivatedById Int?      @map("deactivated_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  details       LocationDetail[]
+  deactivatedBy User?            @relation("LocationDeactivatedBy", fields: [deactivatedById], references: [id], onDelete: SetNull)
+
+  @@index([isActive, name])
   @@map("locations")
 }
 
@@ -59,6 +69,7 @@ model LocationDetail {
   id         Int      @id @default(autoincrement())
   locationId Int      @map("location_id")
   subsection String   @db.VarChar(50)
+  sortOrder  Int      @default(0) @map("sort_order")
   capacity   Int      @default(0)
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -66,16 +77,17 @@ model LocationDetail {
   location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
   plots    Plot[]
 
+  @@index([locationId, sortOrder])
   @@map("location_details")
 }
 
 // ─── PLOT & GRAVE MANAGEMENT ──────────────────────────────────
 
 model Plot {
-  id               Int     @id @default(autoincrement())
-  locationDetailId Int     @map("location_detail_id")
-  plotNumber        String  @map("plot_number") @db.VarChar(30)
-  status           String  @default("available") @db.VarChar(20)  // available, occupied, reserved, maintenance
+  id               Int      @id @default(autoincrement())
+  locationDetailId Int      @map("location_detail_id")
+  plotNumber       String   @map("plot_number") @db.VarChar(30)
+  status           String   @default("available") @db.VarChar(20)
   gpsLat           Decimal? @map("gps_lat") @db.Decimal(10, 8)
   gpsLng           Decimal? @map("gps_lng") @db.Decimal(11, 8)
   createdAt        DateTime @default(now()) @map("created_at")
@@ -83,36 +95,46 @@ model Plot {
 
   locationDetail LocationDetail @relation(fields: [locationDetailId], references: [id], onDelete: Restrict)
   graves         Grave[]
+  navigations    Navigation[]
 
   @@unique([locationDetailId, plotNumber])
   @@map("plots")
 }
 
 model Grave {
-  id           Int       @id @default(autoincrement())
-  plotId       Int       @unique @map("plot_id")
-  deceasedName String    @map("deceased_name") @db.VarChar(200)
-  burialDate   DateTime? @map("burial_date")
-  status       String    @default("active") @db.VarChar(20) // active, archived
-  archivedAt   DateTime? @map("archived_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id                 Int       @id @default(autoincrement())
+  plotId             Int       @unique @map("plot_id")
+  deceasedName       String    @map("deceased_name") @db.VarChar(200)
+  burialDate         DateTime? @map("burial_date")
+  status             String    @default("active") @db.VarChar(20)
+  archivedAt         DateTime? @map("archived_at")
+  verificationStatus String    @default("pending") @map("verification_status") @db.VarChar(20)
+  verifiedAt         DateTime? @map("verified_at")
+  verifiedById       Int?      @map("verified_by_id")
+  verificationNote   String?   @map("verification_note") @db.VarChar(500)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  plot    Plot          @relation(fields: [plotId], references: [id], onDelete: Restrict)
-  details GraveDetail?
+  plot       Plot         @relation(fields: [plotId], references: [id], onDelete: Restrict)
+  details    GraveDetail?
+  verifiedBy User?        @relation("GraveVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
 
+  @@index([burialDate])
+  @@index([status, verificationStatus])
   @@map("graves")
 }
 
 model GraveDetail {
-  id           Int     @id @default(autoincrement())
-  graveId      Int     @unique @map("grave_id")
-  causeOfDeath  String? @map("cause_of_death") @db.Text   // was VarChar(255); widened for encrypted values
-  contactPerson String? @map("contact_person") @db.Text   // was VarChar(150); widened for encrypted values
-  contactPhone  String? @map("contact_phone")  @db.Text   // was VarChar(30); widened for encrypted values
-  notes         String? @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                   Int      @id @default(autoincrement())
+  graveId              Int      @unique @map("grave_id")
+  causeOfDeath         String?  @map("cause_of_death") @db.Text
+  contactPerson        String?  @map("contact_person") @db.Text
+  contactPhone         String?  @map("contact_phone") @db.Text
+  notes                String?  @db.Text
+  encryptionKeyVersion String   @default("v1") @map("encryption_key_version") @db.VarChar(40)
+  notesEncrypted       Boolean  @default(false) @map("notes_encrypted")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   grave Grave @relation(fields: [graveId], references: [id], onDelete: Cascade)
 
@@ -123,22 +145,24 @@ model GraveDetail {
 
 model UserLog {
   id        Int      @id @default(autoincrement())
-  userId    Int      @map("user_id")
+  userId    Int?     @map("user_id")
   action    String   @db.VarChar(255)
   ipAddress String?  @map("ip_address") @db.VarChar(45)
   createdAt DateTime @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([createdAt])
+  @@index([action])
   @@map("user_logs")
 }
 
 model Request {
   id          Int      @id @default(autoincrement())
   userId      Int      @map("user_id")
-  type        String   @db.VarChar(50)  // reservation, record_update, inquiry
+  type        String   @db.VarChar(50)
   description String   @db.Text
-  status      String   @default("pending") @db.VarChar(20) // pending, approved, rejected
+  status      String   @default("pending") @db.VarChar(20)
   referenceId String   @unique @map("reference_id") @db.VarChar(20)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -152,18 +176,60 @@ model Request {
 model Notification {
   id          Int       @id @default(autoincrement())
   userId      Int       @map("user_id")
-  requestId   Int       @map("request_id")
-  referenceId String    @map("reference_id") @db.VarChar(20)
-  outcome     String    @db.VarChar(20) // approved | rejected
-  emailStatus String    @default("none") @map("email_status") @db.VarChar(20) // none | sent | failed
+  requestId   Int?      @map("request_id")
+  broadcastId Int?      @map("broadcast_id")
+  referenceId String?   @map("reference_id") @db.VarChar(20)
+  outcome     String?   @db.VarChar(20)
+  category    String    @default("request_outcome") @db.VarChar(30)
+  title       String    @default("Notification") @db.VarChar(160)
+  message     String?   @db.Text
+  emailStatus String    @default("none") @map("email_status") @db.VarChar(20)
   readAt      DateTime? @map("read_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request   Request?   @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  broadcast Broadcast? @relation(fields: [broadcastId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
+  @@index([broadcastId])
   @@map("notifications")
+}
+
+model Broadcast {
+  id        Int       @id @default(autoincrement())
+  creatorId Int       @map("creator_id")
+  audience  String    @db.VarChar(20)
+  title     String    @db.VarChar(160)
+  message   String    @db.Text
+  status    String    @default("processing") @db.VarChar(20)
+  createdAt DateTime  @default(now()) @map("created_at")
+  sentAt    DateTime? @map("sent_at")
+
+  creator       User                @relation(fields: [creatorId], references: [id], onDelete: Restrict)
+  notifications Notification[]
+  deliveries    BroadcastDelivery[]
+
+  @@index([createdAt])
+  @@map("broadcasts")
+}
+
+model BroadcastDelivery {
+  id          Int      @id @default(autoincrement())
+  broadcastId Int      @map("broadcast_id")
+  userId      Int      @map("user_id")
+  emailStatus String   @default("none") @map("email_status") @db.VarChar(20)
+  attempts    Int      @default(0)
+  error       String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([broadcastId, userId])
+  @@index([userId, createdAt])
+  @@map("broadcast_deliveries")
 }
 
 model Feedback {
@@ -179,13 +245,46 @@ model Feedback {
 }
 
 model Navigation {
-  id          Int      @id @default(autoincrement())
-  userId      Int?     @map("user_id")
-  origin      String?  @db.VarChar(255)
-  destination String   @db.VarChar(255)
-  createdAt   DateTime @default(now()) @map("created_at")
+  id              Int      @id @default(autoincrement())
+  userId          Int?     @map("user_id")
+  plotId          Int?     @map("plot_id")
+  origin          String?  @db.VarChar(255)
+  destination     String   @db.VarChar(255)
+  channel         String   @default("dashboard") @db.VarChar(20)
+  outcome         String   @default("success") @db.VarChar(20)
+  distanceMeters  Int?     @map("distance_meters")
+  durationSeconds Int?     @map("duration_seconds")
+  createdAt       DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  plot Plot? @relation(fields: [plotId], references: [id], onDelete: SetNull)
 
+  @@index([createdAt])
+  @@index([channel, createdAt])
+  @@index([plotId, createdAt])
   @@map("navigations")
+}
+
+model ArchivalRun {
+  id            Int       @id @default(autoincrement())
+  runKey        String    @unique @map("run_key") @db.VarChar(80)
+  source        String    @db.VarChar(20)
+  status        String    @default("running") @db.VarChar(20)
+  archivedCount Int       @default(0) @map("archived_count")
+  error         String?   @db.VarChar(500)
+  startedAt     DateTime  @default(now()) @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+
+  @@index([startedAt])
+  @@map("archival_runs")
+}
+
+model RateLimitBucket {
+  key       String   @id @map("bucket_key") @db.Char(64)
+  count     Int      @default(1)
+  expiresAt DateTime @map("expires_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@map("rate_limit_buckets")
 }

@@ -36,10 +36,18 @@ function subsectionErrors(subsections) {
   return errors;
 }
 
-// Public-safe location layout used by map and plot views.
-export async function GET() {
+// Public-safe location layout used by map and plot views. Inactive locations
+// remain hidden unless an authenticated Admin explicitly requests them.
+export async function GET(request) {
+  const includeInactive = new URL(request.url).searchParams.get("includeInactive") === "true";
+  if (includeInactive) {
+    const auth = await requireRole(request, "layout");
+    if (!auth.ok) return auth.response;
+  }
+
   try {
     const locations = await prisma.location.findMany({
+      where: includeInactive ? undefined : { isActive: true },
       include: {
         details: {
           include: {

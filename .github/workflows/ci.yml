@@ -1,0 +1,74 @@
+name: Smart Cemetery CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main, master]
+
+jobs:
+  release-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test-root-password
+          MYSQL_DATABASE: cemetery_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ptest-root-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: mysql://root:test-root-password@127.0.0.1:3306/cemetery_app
+      TEST_DATABASE_URL: mysql://root:test-root-password@127.0.0.1:3306/cemetery_test
+      ALLOW_LIVE_MYSQL_TESTS: "yes"
+      NEXTAUTH_SECRET: ci-only-nextauth-secret-at-least-thirty-two-characters
+      NEXTAUTH_URL: http://localhost:3000
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      ENCRYPTION_KEY_VERSION: v1
+      NEXT_PUBLIC_MAP_TILE_URL: https://tiles.example.test/{z}/{x}/{y}.png
+      NEXT_PUBLIC_MAP_TILE_ATTRIBUTION: CI test tiles
+      ROUTING_BASE_URL: https://routing.example.test
+      ROUTING_PROFILE: foot
+      SEED_ADMIN_EMAIL: admin-e2e@example.test
+      SEED_ADMIN_PASSWORD: Admin-E2E-password-123!
+      SEED_STAFF_EMAIL: staff-e2e@example.test
+      SEED_STAFF_PASSWORD: Staff-E2E-password-123!
+      SEED_CLIENT_EMAIL: client-e2e@example.test
+      SEED_CLIENT_PASSWORD: Client-E2E-password-123!
+      E2E_ADMIN_EMAIL: admin-e2e@example.test
+      E2E_ADMIN_PASSWORD: Admin-E2E-password-123!
+      E2E_STAFF_EMAIL: staff-e2e@example.test
+      E2E_STAFF_PASSWORD: Staff-E2E-password-123!
+      E2E_CLIENT_EMAIL: client-e2e@example.test
+      E2E_CLIENT_PASSWORD: Client-E2E-password-123!
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - name: Fresh migration and live MySQL constraints
+        run: npm run test:mysql
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Seed disposable role database
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npm run db:seed
+      - run: npx playwright install --with-deps chromium
+      - name: Public and kiosk journeys
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npm run test:e2e:public && npm run test:e2e:kiosk
+      - name: Authenticated role journeys
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npm run test:e2e:roles

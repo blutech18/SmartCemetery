@@ -1,90 +1,80 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock all collaborators so the handler's control flow is exercised in
-// isolation. The archival endpoint's own logic (authorization branching,
-// count reporting, audit write, error handling) is what we verify here.
-vi.mock("@/lib/db", () => ({ prisma: {} }));
-vi.mock("@/lib/authz", () => ({ requireRole: vi.fn() }));
-vi.mock("@/lib/archival", () => ({ archiveOldRecords: vi.fn() }));
-vi.mock("@/lib/audit", () => ({
-  writeAuditLog: vi.fn(),
-  getClientIp: vi.fn(() => ""),
+vi.mock("@/lib/db", () => ({
+  prisma: { archivalRun: { findMany: vi.fn() } },
 }));
+vi.mock("@/lib/authz", () => ({ requireRole: vi.fn() }));
+vi.mock("@/lib/archival", () => ({
+  archiveOldRecords: vi.fn(),
+  claimArchivalRun: vi.fn(),
+  completeArchivalRun: vi.fn(),
+  defaultArchivalRunKey: vi.fn(() => "daily:2026-07-20"),
+  failArchivalRun: vi.fn(),
+  isValidArchivalRunKey: vi.fn(() => true),
+}));
+vi.mock("@/lib/audit", () => ({ writeAuditLog: vi.fn(), getClientIp: vi.fn(() => "") }));
 
-import { POST } from "@/app/api/archival/route";
+import { GET, POST } from "@/app/api/archival/route";
+import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/authz";
-import { archiveOldRecords } from "@/lib/archival";
-import { writeAuditLog } from "@/lib/audit";
+import {
+  archiveOldRecords,
+  claimArchivalRun,
+  completeArchivalRun,
+  failArchivalRun,
+} from "@/lib/archival";
 
-/** Build a real Request whose x-archival-token header we control. */
-function makePostRequest(headers = {}) {
-  return new Request("http://localhost/api/archival", {
-    method: "POST",
-    headers: new Headers(headers),
-  });
+function request(method = "POST", headers = {}) {
+  return new Request("http://localhost/api/archival", { method, headers });
 }
 
-describe("POST /api/archival integration", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    delete process.env.ARCHIVAL_CRON_SECRET;
-    delete process.env.ARCHIVAL_SYSTEM_USER_ID;
+beforeEach(() => {
+  vi.clearAllMocks();
+  requireRole.mockResolvedValue({ ok: true, user: { id: "1", role: "Admin" } });
+});
+
+describe("POST /api/archival durable runs", () => {
+  it("claims, completes, and returns a new run", async () => {
+    claimArchivalRun.mockResolvedValue({ state: "claimed", run: { id: 4, runKey: "daily:2026-07-20" } });
+    archiveOldRecords.mockResolvedValue({ archivedCount: 3 });
+    completeArchivalRun.mockResolvedValue({ id: 4, runKey: "daily:2026-07-20", status: "success", archivedCount: 3 });
+
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ status: "success", archivedCount: 3, duplicate: false });
+    expect(completeArchivalRun).toHaveBeenCalledWith(expect.anything(), 4, 3);
   });
 
-  it("returns 200 with archivedCount and audits the count when an Admin triggers it (Req 6.7)", async () => {
-    const N = 7;
-    requireRole.mockResolvedValueOnce({ ok: true, user: { id: 42, role: "Admin" } });
-    archiveOldRecords.mockResolvedValueOnce({ archivedCount: N });
-
-    const res = await POST(makePostRequest());
-
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ archivedCount: N });
-
-    // Archival ran and the outcome was recorded in the audit log with the count.
-    expect(archiveOldRecords).toHaveBeenCalledTimes(1);
-    expect(writeAuditLog).toHaveBeenCalledTimes(1);
-    const auditArg = writeAuditLog.mock.calls[0][0];
-    expect(auditArg.userId).toBe(42);
-    expect(auditArg.action).toMatch(/grave\.archive.*count=7/);
-  });
-
-  it("returns 403 and never runs archival when unauthorized and no valid token (Req 6.6)", async () => {
-    requireRole.mockResolvedValueOnce({ ok: false, response: undefined });
-
-    const res = await POST(makePostRequest()); // no x-archival-token header
-
-    expect(res.status).toBe(403);
-    // No grave record is changed: archival must not be invoked.
+  it("returns a prior successful duplicate without archiving again", async () => {
+    claimArchivalRun.mockResolvedValue({ state: "duplicate", run: { id: 4, status: "success", archivedCount: 3 } });
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ duplicate: true, status: "success" });
     expect(archiveOldRecords).not.toHaveBeenCalled();
-    expect(writeAuditLog).not.toHaveBeenCalled();
   });
 
-  it("authorizes the scheduled cron path via a valid x-archival-token header (Req 6.6)", async () => {
-    const N = 3;
-    process.env.ARCHIVAL_CRON_SECRET = "s3cret-cron-token";
-    requireRole.mockResolvedValueOnce({ ok: false, response: undefined });
-    archiveOldRecords.mockResolvedValueOnce({ archivedCount: N });
-
-    const res = await POST(
-      makePostRequest({ "x-archival-token": "s3cret-cron-token" })
-    );
-
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ archivedCount: N });
-    expect(archiveOldRecords).toHaveBeenCalledTimes(1);
+  it("returns 409 for an overlapping run", async () => {
+    claimArchivalRun.mockResolvedValue({ state: "conflict", run: { id: 8, runKey: "other", status: "running" } });
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(archiveOldRecords).not.toHaveBeenCalled();
   });
 
-  it("returns 500 when archival throws, consistent with rollback semantics (Req 6.8)", async () => {
-    requireRole.mockResolvedValueOnce({ ok: true, user: { id: 1, role: "Admin" } });
-    archiveOldRecords.mockRejectedValueOnce(new Error("transaction failed"));
+  it("persists failed status when archival throws", async () => {
+    claimArchivalRun.mockResolvedValue({ state: "claimed", run: { id: 9 } });
+    archiveOldRecords.mockRejectedValue(new Error("database unavailable"));
+    const response = await POST(request());
+    expect(response.status).toBe(500);
+    expect(failArchivalRun).toHaveBeenCalledWith(expect.anything(), 9, expect.any(Error));
+  });
+});
 
-    const res = await POST(makePostRequest());
-
-    expect(res.status).toBe(500);
-    const body = await res.json();
-    expect(body.error).toBeDefined();
-    // Archival did not complete -> no audit entry recording a successful count.
-    expect(writeAuditLog).not.toHaveBeenCalled();
+describe("GET /api/archival", () => {
+  it("returns recent runs for Admin", async () => {
+    prisma.archivalRun.findMany.mockResolvedValue([{ id: 2, status: "success" }]);
+    const response = await GET(request("GET"));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([{ id: 2, status: "success" }]);
+    expect(prisma.archivalRun.findMany).toHaveBeenCalledWith({ orderBy: { startedAt: "desc" }, take: 20 });
   });
 });

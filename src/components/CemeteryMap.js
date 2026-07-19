@@ -1,10 +1,9 @@
 "use client";
 
-import { MapContainer, TileLayer, CircleMarker, Marker, Popup, Polyline, useMapEvents, useMap } from "react-leaflet";
-import { useEffect, useMemo } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { getClientMapCenter, getClientTileConfig } from "../lib/config";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { GoogleMap, MarkerF, PolylineF, InfoWindowF, useJsApiLoader } from "@react-google-maps/api";
+import { Check } from "lucide-react";
+import { getClientMapCenter, getClientGoogleMapsApiKey } from "../lib/config";
 
 function statusColor(status) {
   return status === "available" ? "#2ECC71"
@@ -13,48 +12,46 @@ function statusColor(status) {
     : "#4ECDC4";
 }
 
-// Asset-free draggable pin (HTML divIcon) for the plot being placed.
-function makeDraftPinIcon() {
-  return L.divIcon({
-    className: "",
-    html:
-      '<div style="width:20px;height:20px;border-radius:50% 50% 50% 0;background:#2D6CDF;border:2px solid #111;transform:rotate(-45deg);box-shadow:0 1px 4px rgba(0,0,0,0.4);cursor:move;"></div>',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  });
+const WRAPPER_STYLE = { position: "relative", width: "100%", height: "100%", borderRadius: "var(--radius-md)", overflow: "hidden" };
+const CONTAINER_STYLE = { width: "100%", height: "100%" };
+
+// Base map options. Satellite/hybrid imagery mirrors the manuscript's visual
+// map guide while keeping the standard zoom control available for touch.
+const BASE_OPTIONS = {
+  mapTypeId: "hybrid",
+  disableDefaultUI: false,
+  mapTypeControl: false,
+  streetViewControl: false,
+  fullscreenControl: false,
+  zoomControl: true,
+  gestureHandling: "greedy",
+  clickableIcons: false,
+  maxZoom: 24,
+};
+
+// Colored circle symbol equivalent to the previous CircleMarker. Requires the
+// Google Maps script to be loaded (callers only render markers when isLoaded).
+function circleSymbol(color, selected) {
+  return {
+    path: window.google.maps.SymbolPath.CIRCLE,
+    fillColor: color,
+    fillOpacity: 0.9,
+    strokeColor: selected ? "#111111" : "#ffffff",
+    strokeWeight: selected ? 3 : 1.5,
+    scale: selected ? 9 : 7,
+  };
 }
 
-// Status-colored draggable dot used in Edit-locations mode.
-function makeStatusIcon(color) {
-  return L.divIcon({
-    className: "",
-    html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #111;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,0.4);cursor:move;"></div>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-}
-
-// Captures map clicks and reports the coordinate — only while placing.
-function MapClickHandler({ active, onMapClick }) {
-  useMapEvents({
-    click(e) {
-      if (active && typeof onMapClick === "function") {
-        onMapClick(e.latlng.lat, e.latlng.lng);
-      }
-    },
-  });
-  return null;
-}
-
-// Smoothly recenters the map when `focusPoint` changes.
-function RecenterMap({ focusPoint }) {
-  const map = useMap();
-  useEffect(() => {
-    if (focusPoint && Number.isFinite(focusPoint.lat) && Number.isFinite(focusPoint.lng)) {
-      map.flyTo([focusPoint.lat, focusPoint.lng], Math.max(map.getZoom(), 19), { duration: 0.6 });
-    }
-  }, [focusPoint, map]);
-  return null;
+// Draggable teardrop pin used for the plot being placed / relocated.
+function draftSymbol() {
+  return {
+    path: window.google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+    fillColor: "#2D6CDF",
+    fillOpacity: 1,
+    strokeColor: "#111111",
+    strokeWeight: 2,
+    scale: 6,
+  };
 }
 
 export default function CemeteryMap({
@@ -71,116 +68,291 @@ export default function CemeteryMap({
 }) {
   // Map center is sourced from configuration, not hardcoded (Req 13.4).
   const { lat, lng } = getClientMapCenter();
-  const tile = getClientTileConfig();
-  const center = [lat, lng];
+  const center = useMemo(() => ({ lat, lng }), [lat, lng]);
 
-  const draftIcon = useMemo(() => makeDraftPinIcon(), []);
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: "cemetery-google-maps",
+    googleMapsApiKey: getClientGoogleMapsApiKey(),
+  });
+
+  const [map, setMap] = useState(null);
+  const [infoPlot, setInfoPlot] = useState(null);
+  const [mapTypeId, setMapTypeId] = useState("hybrid");
+  const [showMapMenu, setShowMapMenu] = useState(false);
+  const [showSatelliteMenu, setShowSatelliteMenu] = useState(false);
+
+  const onLoad = useCallback((instance) => setMap(instance), []);
+  const onUnmount = useCallback(() => setMap(null), []);
+
+  // Smoothly recenter when focusPoint changes (Req 12/13 map focus).
+  useEffect(() => {
+    if (!map || !focusPoint) return;
+    if (Number.isFinite(focusPoint.lat) && Number.isFinite(focusPoint.lng)) {
+      map.panTo({ lat: focusPoint.lat, lng: focusPoint.lng });
+      map.setZoom(Math.max(map.getZoom() || 0, 20));
+    }
+  }, [focusPoint, map]);
+
+  // Route polyline: parent supplies [lat, lng] pairs; Google expects objects.
+  const routePath = useMemo(
+    () =>
+      Array.isArray(routeCoords)
+        ? routeCoords
+            .filter((c) => Array.isArray(c) && c.length === 2)
+            .map(([cLat, cLng]) => ({ lat: Number(cLat), lng: Number(cLng) }))
+        : [],
+    [routeCoords]
+  );
+
+  const handleMapClick = useCallback(
+    (event) => {
+      if (placingMode && typeof onMapClick === "function" && event.latLng) {
+        onMapClick(event.latLng.lat(), event.latLng.lng());
+      }
+    },
+    [placingMode, onMapClick]
+  );
+
+  const options = useMemo(
+    () => ({ ...BASE_OPTIONS, mapTypeId, draggableCursor: placingMode ? "crosshair" : undefined }),
+    [placingMode, mapTypeId]
+  );
+
+  if (loadError) {
+    return (
+      <div className="alert alert-danger" role="alert" style={{ margin: "1rem" }}>
+        The map could not be loaded. Verify the Google Maps API key configuration.
+      </div>
+    );
+  }
+
+  if (!isLoaded) {
+    return <div className="spinner spinner-lg" aria-label="Loading cemetery map" />;
+  }
 
   return (
-    <MapContainer
-      center={center}
-      zoom={18}
-      maxZoom={24}
-      style={{
-        height: "100%",
-        width: "100%",
-        borderRadius: "var(--radius-md)",
-        zIndex: 0,
-        cursor: placingMode ? "crosshair" : "grab",
-      }}
-    >
-      {tile.url && (
-        <TileLayer
-          attribution={tile.attribution}
-          url={tile.url}
-          maxZoom={24}
-          maxNativeZoom={19}
-        />
-      )}
+    <div style={WRAPPER_STYLE}>
+      <div style={{ 
+        position: "absolute", 
+        top: 24, 
+        left: 24, 
+        zIndex: 10, 
+        display: "flex", 
+        background: "rgba(15, 23, 42, 0.7)", 
+        backdropFilter: "blur(12px)",
+        borderRadius: "var(--radius-md)", 
+        border: "1px solid rgba(255,255,255,0.05)", 
+        boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        padding: "4px"
+      }}>
+        <div style={{ position: "relative" }} onMouseLeave={() => setShowMapMenu(false)}>
+          <button 
+            onMouseEnter={() => setShowMapMenu(true)}
+            onClick={() => setMapTypeId(mapTypeId === "terrain" ? "terrain" : "roadmap")} 
+            style={{ 
+              padding: "6px 14px", 
+              background: (mapTypeId === "roadmap" || mapTypeId === "terrain") ? "rgba(255,255,255,0.1)" : "transparent", 
+              color: (mapTypeId === "roadmap" || mapTypeId === "terrain") ? "#ffffff" : "var(--text-muted)", 
+              border: "none", 
+              borderRadius: "var(--radius-sm)",
+              cursor: "pointer", 
+              fontWeight: 500, 
+              fontSize: "0.85rem", 
+              transition: "all 0.2s",
+              display: "flex",
+              alignItems: "center",
+              gap: 4
+            }}
+          >
+            Map <span style={{ fontSize: "0.6rem", opacity: 0.7 }}>▼</span>
+          </button>
+          
+          {showMapMenu && (
+            <div style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              paddingTop: 8,
+              zIndex: 20
+            }}>
+              <div style={{
+                background: "rgba(15, 23, 42, 0.9)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.05)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 14px",
+                minWidth: "120px",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+              }}>
+                <div 
+                  onClick={() => setMapTypeId(mapTypeId === "terrain" ? "roadmap" : "terrain")}
+                  style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.875rem", cursor: "pointer", color: "#e2e8f0" }}
+                >
+                  <div style={{ 
+                    width: 18, 
+                    height: 18, 
+                    borderRadius: 4, 
+                    border: mapTypeId === "terrain" ? "none" : "1px solid rgba(255,255,255,0.3)",
+                    background: mapTypeId === "terrain" ? "var(--primary)" : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "all 0.2s"
+                  }}>
+                    {mapTypeId === "terrain" && <Check size={14} color="#0f172a" strokeWidth={3} />}
+                  </div>
+                  Terrain
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <div style={{ position: "relative" }} onMouseLeave={() => setShowSatelliteMenu(false)}>
+          <button 
+            onMouseEnter={() => setShowSatelliteMenu(true)}
+            onClick={() => setMapTypeId(mapTypeId === "satellite" ? "satellite" : "hybrid")} 
+            style={{ 
+              padding: "6px 14px", 
+              background: (mapTypeId === "hybrid" || mapTypeId === "satellite") ? "rgba(255,255,255,0.1)" : "transparent", 
+              color: (mapTypeId === "hybrid" || mapTypeId === "satellite") ? "#ffffff" : "var(--text-muted)", 
+              border: "none", 
+              borderRadius: "var(--radius-sm)",
+              cursor: "pointer", 
+              fontWeight: 500, 
+              fontSize: "0.85rem", 
+              transition: "all 0.2s",
+              display: "flex",
+              alignItems: "center",
+              gap: 4 
+            }}
+          >
+            Satellite <span style={{ fontSize: "0.6rem", opacity: 0.7 }}>▼</span>
+          </button>
 
-      <MapClickHandler active={placingMode} onMapClick={onMapClick} />
-      <RecenterMap focusPoint={focusPoint} />
+          {showSatelliteMenu && (
+            <div style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              paddingTop: 8,
+              zIndex: 20
+            }}>
+              <div style={{
+                background: "rgba(15, 23, 42, 0.9)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.05)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 14px",
+                minWidth: "120px",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+              }}>
+                <div 
+                  onClick={() => setMapTypeId(mapTypeId === "hybrid" ? "satellite" : "hybrid")}
+                  style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.875rem", cursor: "pointer", color: "#e2e8f0" }}
+                >
+                  <div style={{ 
+                    width: 18, 
+                    height: 18, 
+                    borderRadius: 4, 
+                    border: mapTypeId === "hybrid" ? "none" : "1px solid rgba(255,255,255,0.3)",
+                    background: mapTypeId === "hybrid" ? "var(--primary)" : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "all 0.2s"
+                  }}>
+                    {mapTypeId === "hybrid" && <Check size={14} color="#0f172a" strokeWidth={3} />}
+                  </div>
+                  Labels
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
+      <GoogleMap
+        mapContainerStyle={CONTAINER_STYLE}
+        center={center}
+        zoom={18}
+        options={options}
+        onLoad={onLoad}
+        onUnmount={onUnmount}
+        onClick={handleMapClick}
+      >
       {/* Navigation route polyline (Req 12.1). */}
-      {Array.isArray(routeCoords) && routeCoords.length > 1 && (
-        <Polyline positions={routeCoords} pathOptions={{ color: "#2D6CDF", weight: 5, opacity: 0.85 }} />
+      {routePath.length > 1 && (
+        <PolylineF
+          path={routePath}
+          options={{ strokeColor: "#2D6CDF", strokeWeight: 5, strokeOpacity: 0.85 }}
+        />
       )}
 
       {plots.map((plot) => {
         if (!plot.gpsLat || !plot.gpsLng) return null;
+        const position = { lat: Number(plot.gpsLat), lng: Number(plot.gpsLng) };
         const color = statusColor(plot.status);
-        const position = [Number(plot.gpsLat), Number(plot.gpsLng)];
 
         // Edit-locations mode: draggable status dot (drag & drop to relocate).
         if (editable) {
           return (
-            <Marker
+            <MarkerF
               key={plot.id}
               position={position}
               draggable
-              icon={makeStatusIcon(color)}
-              eventHandlers={{
-                dragend: (e) => {
-                  const { lat: dLat, lng: dLng } = e.target.getLatLng();
-                  if (typeof onPlotDragEnd === "function") onPlotDragEnd(plot, dLat, dLng);
-                },
+              icon={circleSymbol(color, false)}
+              onDragEnd={(e) => {
+                if (typeof onPlotDragEnd === "function" && e.latLng) {
+                  onPlotDragEnd(plot, e.latLng.lat(), e.latLng.lng());
+                }
               }}
-            >
-              <Popup>
-                <strong>Plot {plot.plotNumber}</strong>
-                <div style={{ fontSize: 12, color: "#666" }}>Drag to relocate</div>
-              </Popup>
-            </Marker>
+            />
           );
         }
 
-        // View mode: static circle marker; click opens the details modal.
+        // View mode: static colored marker; click selects and opens the popup.
         const isSelected = selectedPlot?.id === plot.id;
         return (
-          <CircleMarker
+          <MarkerF
             key={plot.id}
-            center={position}
-            pathOptions={{
-              color: isSelected ? "#111" : "white",
-              weight: isSelected ? 3 : 1.5,
-              fillColor: color,
-              fillOpacity: 0.9,
-            }}
-            radius={isSelected ? 10 : 8}
-            eventHandlers={{
-              click: () => onSelectPlot && onSelectPlot(plot),
+            position={position}
+            icon={circleSymbol(color, isSelected)}
+            onClick={() => {
+              setInfoPlot(plot);
+              if (typeof onSelectPlot === "function") onSelectPlot(plot);
             }}
           >
-            <Popup>
-              <div style={{ padding: "4px" }}>
-                <strong style={{ display: "block", marginBottom: "4px", fontSize: "14px" }}>
-                  Plot {plot.plotNumber}
-                </strong>
-                <div style={{ color: "#666", fontSize: "12px", textTransform: "capitalize" }}>
-                  {plot.status}
+            {infoPlot?.id === plot.id && (
+              <InfoWindowF position={position} onCloseClick={() => setInfoPlot(null)}>
+                <div style={{ padding: "2px 4px" }}>
+                  <strong style={{ display: "block", marginBottom: 4, fontSize: 14 }}>
+                    Plot {plot.plotNumber}
+                  </strong>
+                  <div style={{ color: "#666", fontSize: 12, textTransform: "capitalize" }}>
+                    {plot.status}
+                  </div>
                 </div>
-              </div>
-            </Popup>
-          </CircleMarker>
+              </InfoWindowF>
+            )}
+          </MarkerF>
         );
       })}
 
       {/* Draggable draft pin for the plot being placed (Add / Set / Edit one). */}
       {draftMarker && Number.isFinite(draftMarker.lat) && Number.isFinite(draftMarker.lng) && (
-        <Marker
-          position={[draftMarker.lat, draftMarker.lng]}
+        <MarkerF
+          position={{ lat: draftMarker.lat, lng: draftMarker.lng }}
           draggable
-          icon={draftIcon}
-          eventHandlers={{
-            dragend: (e) => {
-              const { lat: dLat, lng: dLng } = e.target.getLatLng();
-              if (typeof onMapClick === "function") onMapClick(dLat, dLng);
-            },
+          icon={draftSymbol()}
+          onDragEnd={(e) => {
+            if (typeof onMapClick === "function" && e.latLng) {
+              onMapClick(e.latLng.lat(), e.latLng.lng());
+            }
           }}
-        >
-          <Popup>Drag to reposition — then Save</Popup>
-        </Marker>
+        />
       )}
-    </MapContainer>
+    </GoogleMap>
+    </div>
   );
 }

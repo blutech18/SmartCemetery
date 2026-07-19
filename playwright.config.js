@@ -10,7 +10,7 @@ const { defineConfig, devices } = require("@playwright/test");
  * Playwright only looks inside `testDir` below.
  */
 
-const PORT = 3000;
+const PORT = Number(process.env.PLAYWRIGHT_PORT || 3000);
 const BASE_URL = `http://localhost:${PORT}`;
 
 // Mobile viewport matrix covering the 320–767px band plus a landscape variant
@@ -50,7 +50,7 @@ module.exports = defineConfig({
     metadata: vp,
   })),
   webServer: {
-    command: "npm run dev",
+    command: `npm run dev -- --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: true,
     timeout: 120_000,

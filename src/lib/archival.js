@@ -81,3 +81,76 @@ export async function archiveOldRecords(prisma, now = new Date()) {
     processedAt: nowDate,
   };
 }
+
+
+export function defaultArchivalRunKey(now = new Date()) {
+  return `daily:${now.toISOString().slice(0, 10)}`;
+}
+
+export function isValidArchivalRunKey(value) {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/.test(value);
+}
+
+/** Atomically claim a durable run key while preventing any overlapping run. */
+export async function claimArchivalRun(prisma, { runKey, source, now = new Date() }) {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.archivalRun.findUnique({ where: { runKey } });
+      if (existing?.status === "success") return { state: "duplicate", run: existing };
+      if (existing?.status === "running") return { state: "conflict", run: existing };
+
+      const overlapping = await tx.archivalRun.findFirst({
+        where: { status: "running", ...(existing ? { id: { not: existing.id } } : {}) },
+        orderBy: { startedAt: "desc" },
+      });
+      if (overlapping) return { state: "conflict", run: overlapping };
+
+      if (existing) {
+        const claimed = await tx.archivalRun.updateMany({
+          where: { id: existing.id, status: "failed" },
+          data: {
+            status: "running",
+            source,
+            archivedCount: 0,
+            error: null,
+            startedAt: now,
+            finishedAt: null,
+          },
+        });
+        if (claimed.count !== 1) return { state: "conflict", run: existing };
+        return {
+          state: "claimed",
+          run: await tx.archivalRun.findUnique({ where: { id: existing.id } }),
+        };
+      }
+
+      return {
+        state: "claimed",
+        run: await tx.archivalRun.create({
+          data: { runKey, source, status: "running", startedAt: now },
+        }),
+      };
+    }, { isolationLevel: "Serializable" });
+  } catch (error) {
+    if (error?.code === "P2002") {
+      const run = await prisma.archivalRun.findUnique({ where: { runKey } });
+      return { state: run?.status === "success" ? "duplicate" : "conflict", run };
+    }
+    throw error;
+  }
+}
+
+export async function completeArchivalRun(prisma, runId, archivedCount, finishedAt = new Date()) {
+  return prisma.archivalRun.update({
+    where: { id: runId },
+    data: { status: "success", archivedCount, error: null, finishedAt },
+  });
+}
+
+export async function failArchivalRun(prisma, runId, error, finishedAt = new Date()) {
+  const safeError = String(error?.message || "Archival failed").slice(0, 500);
+  return prisma.archivalRun.update({
+    where: { id: runId },
+    data: { status: "failed", error: safeError, finishedAt },
+  });
+}

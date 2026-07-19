@@ -1,5 +1,6 @@
 import "./globals.css";
 import "./public.css";
+import { Toaster } from "sonner";
 
 export const metadata = {
   title: "Smart Cemetery — Navigation & Monitoring Platform",
@@ -9,10 +10,60 @@ export const metadata = {
   authors: [{ name: "Smart Cemetery Team" }],
 };
 
+const themeInitializer = `
+  (function () {
+    try {
+      var stored = localStorage.getItem("theme");
+      var systemLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+      var theme = stored === "light" || stored === "dark"
+        ? stored
+        : (systemLight ? "light" : "dark");
+      document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.style.colorScheme = theme;
+    } catch (error) {
+      document.documentElement.setAttribute("data-theme", "dark");
+      document.documentElement.style.colorScheme = "dark";
+    }
+  })();
+`;
+
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
+      </head>
+      <body>
+        {children}
+        <Toaster
+          position="top-right"
+          theme="system"
+          closeButton
+          expand
+          gap={12}
+          visibleToasts={3}
+          duration={4000}
+          offset={{ top: 24, right: 24 }}
+          mobileOffset={{ top: 16, right: 16, left: 16 }}
+          toastOptions={{
+            style: {
+              borderRadius: "12px",
+              width: "auto",
+              minWidth: "fit-content",
+              background: "var(--bg-surface)",
+              backdropFilter: "blur(16px)",
+              border: "1px solid var(--border-default)",
+              color: "var(--text-primary)",
+              boxShadow: "var(--shadow-lg)",
+              padding: "14px 18px",
+            },
+            classNames: {
+              error: "toast-error-matched",
+            },
+          }}
+          containerAriaLabel="Notifications"
+        />
+      </body>
     </html>
   );
 }

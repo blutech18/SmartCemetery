@@ -2,13 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { MapPin, CheckCircle, Archive, Lock, Wrench, Plus, Edit2, Trash2, Crosshair } from "lucide-react";
+import { MapPin, CheckCircle, Archive, Lock, Wrench, Plus, Edit2, Trash2, Crosshair, Search } from "lucide-react";
 
 export default function PlotsPage() {
   const [plots, setPlots] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState("newest");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   // Modal state — plot DATA only (number, section, status). GPS is pinned on the Map page.
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -118,6 +122,23 @@ export default function PlotsPage() {
 
   const unpinnedCount = plots.filter((p) => p.gpsLat == null || p.gpsLng == null).length;
 
+  const filteredPlots = plots.filter((p) => {
+    const matchesSearch = !searchQuery || 
+      (p.plotNumber || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.locationDetail?.location?.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = !statusFilter || p.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const sortedPlots = [...filteredPlots].sort((a, b) => {
+    const dateA = new Date(a.createdAt || 0).getTime();
+    const dateB = new Date(b.createdAt || 0).getTime();
+    return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+  });
+
+  const totalPages = Math.ceil(sortedPlots.length / pageSize);
+  const paginatedPlots = sortedPlots.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap" }}>
@@ -145,26 +166,67 @@ export default function PlotsPage() {
       {/* Status Overview */}
       <div className="grid grid-4" style={{ marginBottom: "var(--space-xl)" }}>
         {[
-          { label: "Available", count: statusCounts.available, icon: <CheckCircle size={24} /> },
-          { label: "Occupied", count: statusCounts.occupied, icon: <Archive size={24} /> },
-          { label: "Reserved", count: statusCounts.reserved, icon: <Lock size={24} /> },
-          { label: "Maintenance", count: statusCounts.maintenance, icon: <Wrench size={24} /> },
+          { label: "Available", count: statusCounts.available, icon: <CheckCircle size={28} style={{ color: "var(--primary-light)" }} /> },
+          { label: "Occupied", count: statusCounts.occupied, icon: <Archive size={28} style={{ color: "var(--danger)" }} /> },
+          { label: "Reserved", count: statusCounts.reserved, icon: <Lock size={28} style={{ color: "var(--warning)" }} /> },
+          { label: "Maintenance", count: statusCounts.maintenance, icon: <Wrench size={28} style={{ color: "var(--text-secondary)" }} /> },
         ].map((s) => (
           <button
             key={s.label}
             className="stat-card"
-            onClick={() => setStatusFilter(statusFilter === s.label.toLowerCase() ? "" : s.label.toLowerCase())}
+            onClick={() => {
+              setStatusFilter(statusFilter === s.label.toLowerCase() ? "" : s.label.toLowerCase());
+              setCurrentPage(1);
+            }}
             style={{
               cursor: "pointer",
               textAlign: "left",
               border: statusFilter === s.label.toLowerCase() ? "1px solid var(--primary)" : undefined,
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '12px',
             }}
           >
-            <div style={{ fontSize: "1.5rem", marginBottom: 4 }}>{s.icon}</div>
-            <div className="stat-value">{s.count}</div>
-            <div className="stat-label">{s.label} Plots</div>
+            <div className="flex items-center justify-between" style={{ width: '100%' }}>
+              <div className="stat-label" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{s.label} Plots</div>
+              {s.icon}
+            </div>
+            <div className="stat-value" style={{ marginBottom: 0, fontSize: '1.875rem' }}>{s.count}</div>
           </button>
         ))}
+      </div>
+
+      <div className="flex gap-sm items-center mb-lg" style={{ flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 250 }}>
+          <Search size={16} className="text-muted" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+          <input
+            type="text"
+            className="form-input"
+            style={{ paddingLeft: 36 }}
+            placeholder="Search plots by number or location..."
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+          />
+        </div>
+        
+        <select 
+          className="form-select" 
+          style={{ width: 160 }}
+          value={sortOrder}
+          onChange={(e) => { setSortOrder(e.target.value); setCurrentPage(1); }}
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+
+        {(searchQuery || statusFilter) && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => { setSearchQuery(""); setStatusFilter(""); setCurrentPage(1); }}
+          >
+            ✕ Clear
+          </button>
+        )}
       </div>
 
       {/* Plots Table */}
@@ -172,7 +234,7 @@ export default function PlotsPage() {
         <div className="flex justify-center" style={{ padding: "var(--space-3xl)" }}>
           <div className="spinner spinner-lg" />
         </div>
-      ) : plots.length > 0 ? (
+      ) : filteredPlots.length > 0 ? (
         <div className="table-container">
           <table className="table">
             <thead>
@@ -187,7 +249,7 @@ export default function PlotsPage() {
               </tr>
             </thead>
             <tbody>
-              {plots.map((plot) => {
+              {paginatedPlots.map((plot) => {
                 const pinned = plot.gpsLat != null && plot.gpsLng != null;
                 return (
                   <tr key={plot.id}>
@@ -231,28 +293,49 @@ export default function PlotsPage() {
                       )}
                     </td>
                     <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleOpenModal(plot)} style={{ padding: "0.25rem" }} title="Edit details">
-                        <Edit2 size={16} />
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleDeletePlot(plot.id)} style={{ padding: "0.25rem", color: "var(--danger)" }} title="Delete">
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex action-buttons">
+                        <button className="action-btn" onClick={() => handleOpenModal(plot)} title="Edit details">
+                          <Edit2 size={16} />
+                        </button>
+                        <button className="action-btn danger-icon" onClick={() => handleDeletePlot(plot.id)} title="Delete">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+            <span className="text-sm text-muted">
+              Showing {filteredPlots.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredPlots.length)} of {filteredPlots.length} records
+            </span>
+            <div className="flex gap-sm">
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage === 1} 
+                onClick={() => setCurrentPage(p => p - 1)}
+              >
+                Previous
+              </button>
+              <button 
+                className="btn btn-secondary btn-sm" 
+                disabled={currentPage >= totalPages || totalPages === 0} 
+                onClick={() => setCurrentPage(p => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="empty-state">
           <div className="empty-state-icon">
-            <MapPin size={48} />
+            <Archive size={48} />
           </div>
           <h3 className="empty-state-title">No Plots Found</h3>
-          <p className="empty-state-text">
-            {statusFilter ? `No ${statusFilter} plots. Try removing the filter.` : "Add locations and plots to get started."}
-          </p>
+          <p className="empty-state-text">No plots match your current filters.</p>
         </div>
       )}
 

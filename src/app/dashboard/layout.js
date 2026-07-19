@@ -1,5 +1,6 @@
 import Providers from "@/components/Providers";
 import DashboardSidebar from "@/components/DashboardSidebar";
+import DashboardHeader from "@/components/DashboardHeader";
 
 export const metadata = {
   title: "Dashboard — Smart Cemetery",
@@ -12,6 +13,7 @@ export default function DashboardLayout({ children }) {
       <div className="app-layout">
         <DashboardSidebar />
         <main className="main-content">
+          <DashboardHeader />
           <div className="page-content">{children}</div>
         </main>
       </div>

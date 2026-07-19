@@ -14,9 +14,18 @@ import {
   DecryptionError,
 } from "@/lib/encryption";
 import { getClientIp, writeAuditLog } from "@/lib/audit";
+import { boundedRateLimit, consumeRateLimit } from "@/lib/rate-limit";
 
-// Sensitive GraveDetail fields that must never be exposed to unauthenticated callers.
-const SENSITIVE_DETAIL_FIELDS = ["contactPerson", "contactPhone", "causeOfDeath"];
+// GraveDetail fields and encryption metadata that must never be exposed to
+// unauthenticated callers.
+const PRIVATE_DETAIL_FIELDS = [
+  "contactPerson",
+  "contactPhone",
+  "causeOfDeath",
+  "notes",
+  "encryptionKeyVersion",
+  "notesEncrypted",
+];
 
 // Uniform encryption-error response (Req 3.3, 3.4). Shape matches the platform
 // error envelope: { error: { type, message } }.
@@ -32,7 +41,7 @@ function encryptionErrorResponse(message) {
 function stripSensitiveDetail(detail) {
   if (!detail) return detail;
   const result = { ...detail };
-  for (const field of SENSITIVE_DETAIL_FIELDS) {
+  for (const field of PRIVATE_DETAIL_FIELDS) {
     if (field in result) delete result[field];
   }
   return result;
@@ -84,10 +93,35 @@ export async function GET(request) {
 
     // Smart Search mode
     if (query) {
+      const baseLimit = boundedRateLimit("SEARCH_RATE_LIMIT_MAX", 60, 5, 1_000);
+      const windowSeconds = boundedRateLimit("SEARCH_RATE_LIMIT_WINDOW_SECONDS", 60, 10, 3_600);
+      let throttle;
+      try {
+        throttle = await consumeRateLimit({
+          scope: "grave-search",
+          identifier: getClientIp(request) || "unresolved",
+          limit: authorized ? baseLimit * 4 : baseLimit,
+          windowMs: windowSeconds * 1000,
+        });
+      } catch {
+        return NextResponse.json(
+          { error: { type: "rate_limit_unavailable", message: "Search is temporarily unavailable" } },
+          { status: 503 }
+        );
+      }
+      if (!throttle.allowed) {
+        return NextResponse.json(
+          { error: { type: "rate_limit", message: "Too many searches. Please try again shortly." } },
+          { status: 429, headers: { "Retry-After": String(throttle.retryAfterSeconds) } }
+        );
+      }
+
       const results = await smartSearch(prisma, query);
       return NextResponse.json({
         exact: results.exact.map((g) => exposeGraveDetails(g, authorized)),
         suggestions: results.suggestions.map((g) => exposeGraveDetails(g, authorized)),
+        nearby: (results.nearby || []).map((g) => exposeGraveDetails(g, authorized)),
+        matchType: results.matchType || "none",
       });
     }
 
@@ -260,6 +294,8 @@ export async function POST(request) {
             contactPerson: encryptedDetail.contactPerson,
             contactPhone: encryptedDetail.contactPhone,
             notes: encryptedDetail.notes,
+            encryptionKeyVersion: encryptedDetail.encryptionKeyVersion,
+            notesEncrypted: encryptedDetail.notesEncrypted,
           },
         });
       }

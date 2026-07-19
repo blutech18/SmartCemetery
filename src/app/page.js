@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Landmark, Search, Map, BarChart3, ChevronRight, Fingerprint, User } from "lucide-react";
+import { PublicThemeToggle } from "@/components/ui/PublicThemeToggle";
 
 export default function LandingPage() {
   const [query, setQuery] = useState("");
@@ -39,6 +40,7 @@ export default function LandingPage() {
           <Link href="/search" className="btn btn-ghost">
             Search Directory
           </Link>
+          <PublicThemeToggle />
           <Link href="/login" className="btn btn-ghost" style={{ width: '44px', padding: 0 }} aria-label="Admin Login" title="Admin Login">
             <User size={20} />
           </Link>
@@ -75,30 +77,36 @@ export default function LandingPage() {
       {/* Feature Cards */}
       <div className="premium-features-grid fade-in-up delay-300">
         <div className="premium-feature-card">
-          <div className="premium-feature-icon">
-            <Map size={28} />
+          <div className="premium-feature-header">
+            <div className="premium-feature-icon">
+              <Map size={28} />
+            </div>
+            <h3 className="premium-feature-title">Interactive Map</h3>
           </div>
-          <h3 className="premium-feature-title">Interactive Map</h3>
           <p className="premium-feature-desc">
             Navigate the cemetery with a fully interactive map, featuring highlighted plot markers, precise coordinates, and visual directions to your destination.
           </p>
         </div>
 
         <div className="premium-feature-card">
-          <div className="premium-feature-icon">
-            <Fingerprint size={28} />
+          <div className="premium-feature-header">
+            <div className="premium-feature-icon">
+              <Fingerprint size={28} />
+            </div>
+            <h3 className="premium-feature-title">Smart Directory</h3>
           </div>
-          <h3 className="premium-feature-title">Smart Directory</h3>
           <p className="premium-feature-desc">
             Find loved ones instantly using our intelligent phonetic matching engine. Search by exact name, fuzzy matches, or unique grave identifiers effortlessly.
           </p>
         </div>
 
         <div className="premium-feature-card">
-          <div className="premium-feature-icon">
-            <BarChart3 size={28} />
+          <div className="premium-feature-header">
+            <div className="premium-feature-icon">
+              <BarChart3 size={28} />
+            </div>
+            <h3 className="premium-feature-title">Data Insights</h3>
           </div>
-          <h3 className="premium-feature-title">Data Insights</h3>
           <p className="premium-feature-desc">
             Gain complete visibility with real-time analytics. Monitor plot availability, analyze burial statistics, and oversee system operations in a unified view.
           </p>

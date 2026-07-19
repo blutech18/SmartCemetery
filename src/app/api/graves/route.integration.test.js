@@ -243,8 +243,9 @@ describe("Task 5.2 — secured grave endpoints", () => {
     expect(details).not.toHaveProperty("contactPerson");
     expect(details).not.toHaveProperty("contactPhone");
     expect(details).not.toHaveProperty("causeOfDeath");
-    // Non-sensitive field remains available.
-    expect(details.notes).toBe("note");
+    expect(details).not.toHaveProperty("notes");
+    expect(details).not.toHaveProperty("encryptionKeyVersion");
+    expect(details).not.toHaveProperty("notesEncrypted");
   });
 });
 

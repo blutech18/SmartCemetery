@@ -9,7 +9,7 @@ async function main() {
   // Load the ESM encryption helper so sensitive GraveDetail fields are stored
   // encrypted at rest (matching the API write path). Dynamic import bridges
   // this CommonJS seed to the ESM module.
-  const { encryptField } = await import("../src/lib/encryption.js");
+  const { encryptGraveDetail } = await import("../src/lib/encryption.js");
 
   // 1. Create User Types
   console.log("Creating user types...");
@@ -32,46 +32,55 @@ async function main() {
   ]);
   console.log(`  ✓ ${userTypes.length} user types created`);
 
-  // 2. Create Default Users
-  console.log("Creating default users...");
-  const passwordHash = await bcrypt.hash("password123", 12);
+  // 2. Create explicitly configured users. Seed passwords are never embedded
+  // in source or printed; this command fails closed when they are absent.
+  console.log("Creating configured users...");
+  const userSpecs = [
+    {
+      roleIndex: 0,
+      name: "System Administrator",
+      email: process.env.SEED_ADMIN_EMAIL || "admin@cemetery.gov.ph",
+      password: process.env.SEED_ADMIN_PASSWORD,
+    },
+    {
+      roleIndex: 1,
+      name: "Cemetery Staff",
+      email: process.env.SEED_STAFF_EMAIL || "staff@cemetery.gov.ph",
+      password: process.env.SEED_STAFF_PASSWORD,
+    },
+    {
+      roleIndex: 2,
+      name: "Cemetery Client",
+      email: process.env.SEED_CLIENT_EMAIL || "visitor@example.com",
+      password: process.env.SEED_CLIENT_PASSWORD,
+    },
+  ];
+  for (const spec of userSpecs) {
+    if (typeof spec.password !== "string" || spec.password.length < 12) {
+      throw new Error("SEED_ADMIN_PASSWORD, SEED_STAFF_PASSWORD, and SEED_CLIENT_PASSWORD must each contain at least 12 characters");
+    }
+  }
 
-  const users = await Promise.all([
-    prisma.user.upsert({
-      where: { email: "admin@cemetery.gov.ph" },
-      update: {},
-      create: {
-        name: "System Administrator",
-        email: "admin@cemetery.gov.ph",
+  const users = await Promise.all(userSpecs.map(async (spec) => {
+    const passwordHash = await bcrypt.hash(spec.password, 12);
+    return prisma.user.upsert({
+      where: { email: spec.email },
+      update: {
+        name: spec.name,
         passwordHash,
-        userTypeId: userTypes[0].id,
+        userTypeId: userTypes[spec.roleIndex].id,
         status: "active",
       },
-    }),
-    prisma.user.upsert({
-      where: { email: "staff@cemetery.gov.ph" },
-      update: {},
       create: {
-        name: "Maria Santos",
-        email: "staff@cemetery.gov.ph",
+        name: spec.name,
+        email: spec.email,
         passwordHash,
-        userTypeId: userTypes[1].id,
+        userTypeId: userTypes[spec.roleIndex].id,
         status: "active",
       },
-    }),
-    prisma.user.upsert({
-      where: { email: "visitor@example.com" },
-      update: {},
-      create: {
-        name: "Juan Dela Cruz",
-        email: "visitor@example.com",
-        passwordHash,
-        userTypeId: userTypes[2].id,
-        status: "active",
-      },
-    }),
-  ]);
-  console.log(`  ✓ ${users.length} users created`);
+    });
+  }));
+  console.log(`  ✓ ${users.length} configured users created or updated`);
 
   // 3. Create Locations
   console.log("Creating locations...");
@@ -84,9 +93,9 @@ async function main() {
         gpsLng: 124.6578,
         details: {
           create: [
-            { subsection: "A1", capacity: 50 },
-            { subsection: "A2", capacity: 50 },
-            { subsection: "A3", capacity: 40 },
+            { subsection: "A1", sortOrder: 1, capacity: 50 },
+            { subsection: "A2", sortOrder: 2, capacity: 50 },
+            { subsection: "A3", sortOrder: 3, capacity: 40 },
           ],
         },
       },
@@ -100,8 +109,8 @@ async function main() {
         gpsLng: 124.6582,
         details: {
           create: [
-            { subsection: "B1", capacity: 60 },
-            { subsection: "B2", capacity: 45 },
+            { subsection: "B1", sortOrder: 1, capacity: 60 },
+            { subsection: "B2", sortOrder: 2, capacity: 45 },
           ],
         },
       },
@@ -115,8 +124,8 @@ async function main() {
         gpsLng: 124.6575,
         details: {
           create: [
-            { subsection: "C1", capacity: 30 },
-            { subsection: "C2", capacity: 35 },
+            { subsection: "C1", sortOrder: 1, capacity: 30 },
+            { subsection: "C2", sortOrder: 2, capacity: 35 },
           ],
         },
       },
@@ -151,7 +160,7 @@ async function main() {
   // 5. Create Graves
   console.log("Creating grave records...");
   const occupiedPlots = await prisma.plot.findMany({
-    where: { status: "occupied" },
+    where: { status: "occupied", graves: { none: {} } },
     take: 30,
   });
 
@@ -184,16 +193,23 @@ async function main() {
       },
     });
 
-    // Add details for some graves
+    // Add encrypted operational details for some graves.
     if (i % 2 === 0) {
+      const encrypted = encryptGraveDetail({
+        causeOfDeath: "Natural causes",
+        contactPerson: `Family of ${sampleNames[i]}`,
+        contactPhone: `+63 9${Math.floor(100000000 + Math.random() * 900000000)}`,
+        notes: "Well-maintained plot with regular family visits.",
+      });
       await prisma.graveDetail.create({
         data: {
           graveId: grave.id,
-          // Sensitive fields are encrypted at rest (Req 3.1); notes stays plaintext.
-          causeOfDeath: encryptField("Natural causes"),
-          contactPerson: encryptField(`Family of ${sampleNames[i]}`),
-          contactPhone: encryptField(`+63 9${Math.floor(100000000 + Math.random() * 900000000)}`),
-          notes: "Well-maintained plot with regular family visits.",
+          causeOfDeath: encrypted.causeOfDeath,
+          contactPerson: encrypted.contactPerson,
+          contactPhone: encrypted.contactPhone,
+          notes: encrypted.notes,
+          encryptionKeyVersion: encrypted.encryptionKeyVersion,
+          notesEncrypted: encrypted.notesEncrypted,
         },
       });
     }
@@ -203,8 +219,10 @@ async function main() {
   // 6. Create Sample Requests
   console.log("Creating sample requests...");
   await Promise.all([
-    prisma.request.create({
-      data: {
+    prisma.request.upsert({
+      where: { referenceId: "REQ-SAMPLE-001" },
+      update: { userId: users[2].id },
+      create: {
         userId: users[2].id,
         type: "reservation",
         description: "Requesting plot reservation in Section A for upcoming family burial.",
@@ -212,8 +230,10 @@ async function main() {
         referenceId: "REQ-SAMPLE-001",
       },
     }),
-    prisma.request.create({
-      data: {
+    prisma.request.upsert({
+      where: { referenceId: "REQ-SAMPLE-002" },
+      update: { userId: users[2].id },
+      create: {
         userId: users[2].id,
         type: "record_update",
         description: "Please update the contact information for grave record in plot A1-003.",
@@ -239,11 +259,7 @@ async function main() {
   ]);
   console.log("  ✓ 3 sample feedbacks created");
 
-  console.log("\n✅ Seeding complete!");
-  console.log("\n📋 Login Credentials:");
-  console.log("  Admin:   admin@cemetery.gov.ph / password123");
-  console.log("  Staff:   staff@cemetery.gov.ph / password123");
-  console.log("  Visitor: visitor@example.com  / password123");
+  console.log("\n✅ Seeding complete. Credentials were sourced from environment variables and were not printed.");
 }
 
 main()

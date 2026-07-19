@@ -22,7 +22,7 @@ export const PUBLIC_PATHS = ["/", "/login", "/search", "/kiosk"];
  * Matched exactly, or as a path-boundary prefix (e.g. `/api/auth/session`).
  * @type {string[]}
  */
-export const PUBLIC_API_PREFIXES = ["/api/auth", "/api/graves"];
+export const PUBLIC_API_PREFIXES = ["/api/auth", "/api/graves", "/api/routing"];
 
 /** Prefix of routes that require an authenticated session. */
 const PROTECTED_PREFIX = "/dashboard";
@@ -115,7 +115,7 @@ export function isProtectedPath(pathname) {
  * @returns {boolean}
  */
 export function isTokenValid(token, now) {
-  if (!token || typeof token !== "object") return false;
+  if (!token || typeof token !== "object" || token.disabled === true) return false;
 
   const { exp } = token;
   if (typeof exp !== "number" || !Number.isFinite(exp)) return false;

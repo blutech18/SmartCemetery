@@ -231,7 +231,7 @@ describe("Property 9: isPotentialDuplicate name + burial-date window", () => {
 // Validates: Requirements 5.1, 5.3, 5.4
 // -------------------------------------------------------------------------
 describe("Property 11: validateRecordCompleteness partitions by completeness", () => {
-  const CANONICAL = ["deceasedName", "burialDate", "plotId"];
+  const CANONICAL = ["deceasedName", "burialDate", "plotId", "plotGps"];
 
   // deceasedName is missing when it is not a non-whitespace string.
   const deceasedNameArb = fc.oneof(
@@ -259,6 +259,16 @@ describe("Property 11: validateRecordCompleteness partitions by completeness", (
   const plotIdArb = nullableArb(
     fc.oneof(fc.integer(), fc.string(), fc.constant(""))
   );
+  const plotGpsArb = fc.oneof(
+    fc.record({ lat: fc.double({ noNaN: true }), lng: fc.double({ noNaN: true }) })
+      .map((value) => ({ value, missing: false })),
+    fc.oneof(
+      fc.constant(null),
+      fc.constant(undefined),
+      fc.record({ lat: fc.constant(null), lng: fc.double({ noNaN: true }) }),
+      fc.record({ lat: fc.double({ noNaN: true }), lng: fc.constant(undefined) })
+    ).map((value) => ({ value, missing: true }))
+  );
 
   it("reports isComplete and the exact canonical set of missing fields", () => {
     fc.assert(
@@ -267,12 +277,14 @@ describe("Property 11: validateRecordCompleteness partitions by completeness", (
           deceasedName: deceasedNameArb,
           burialDate: burialDateArb,
           plotId: plotIdArb,
+          plotGps: plotGpsArb,
         }),
         (record) => {
           const graveData = {
             deceasedName: record.deceasedName.value,
             burialDate: record.burialDate.value,
             plotId: record.plotId.value,
+            plotGps: record.plotGps.value,
           };
 
           const expectedMissing = CANONICAL.filter(

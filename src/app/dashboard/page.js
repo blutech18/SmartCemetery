@@ -2,8 +2,14 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { Archive, MapPin, ClipboardList, MessageSquare, Map, Box, BarChart3 } from "lucide-react";
+import { Archive, MapPin, ClipboardList, MessageSquare, Plus, Eye } from "lucide-react";
+import { PageHeader } from "../../components/dashboard/PageHeader";
+import { KpiCard } from "../../components/dashboard/KpiCard";
+import { Button } from "../../components/ui/Button";
+import { Panel } from "../../components/ui/Panel";
+import { Skeleton } from "../../components/ui/Skeleton";
+import { OccupancyChart } from "../../components/charts/OccupancyChart";
+import { RequestTrendChart } from "../../components/charts/RequestTrendChart";
 
 export default function DashboardPage() {
   const { data: session } = useSession();
@@ -20,149 +26,228 @@ export default function DashboardPage() {
 
   const role = session?.user?.role || "Client";
 
-  return (
-    <div>
-      {/* Page Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">
-            Welcome back, <span className="text-gradient">{session?.user?.name || "User"}</span>
-          </h1>
-          <p className="page-subtitle">
-            {role === "Admin"
-              ? "Manage cemetery records, monitor plots, and review requests."
-              : role === "Staff"
-              ? "Verify records, monitor plots, and assist visitors."
-              : "Search graves, view maps, and track your requests."}
-          </p>
+  if (role !== "Admin") {
+    // For now, render standard fallback for other roles until their dashboards are built
+    return (
+      <>
+        <PageHeader 
+          title={`Welcome back, ${session?.user?.name || "User"}`}
+          description={role === "Staff" ? "Verify records, monitor plots, and assist visitors." : "Search graves, view maps, and track your requests."}
+        />
+        <div className="empty-state mt-lg">
+          <h3 className="empty-state-title">Dashboard under construction</h3>
+          <p className="empty-state-text">Your role-specific dashboard is being upgraded to the new experience.</p>
         </div>
-        {role === "Admin" && (
-          <Link href="/dashboard/graves" className="btn btn-primary">
-            + Add Grave Record
-          </Link>
-        )}
+      </>
+    );
+  }
+
+  // Admin Dashboard
+  return (
+    <>
+      <PageHeader 
+        title="Cemetery operations"
+        description="Last updated today"
+        actions={
+          <>
+            <Button variant="secondary" href="/dashboard/broadcasts">Create broadcast</Button>
+            <Button variant="secondary" href="/dashboard/reports">Export report</Button>
+            <Button variant="secondary" href="/dashboard/graves/new">
+              <Plus size={18} />
+              Add grave record
+            </Button>
+          </>
+        }
+      />
+
+      {/* Admin Top KPI Row */}
+      <div className="grid grid-4 gap-md">
+        <KpiCard
+          loading={loading}
+          title="Plot occupancy"
+          value={stats?.plots?.occupancyRate ? `${stats.plots.occupancyRate}%` : "—"}
+          comparison={stats ? `${stats.plots?.occupied || 0} occupied / ${stats.plots?.available || 0} available` : ""}
+          icon={MapPin}
+          iconVariant="accent"
+          href="/dashboard/plots"
+        />
+        <KpiCard
+          loading={loading}
+          title="Open requests"
+          value={stats?.requests?.pending || 0}
+          comparison={stats ? "Oldest pending: 2 days" : ""}
+          icon={ClipboardList}
+          iconVariant="warning"
+          href="/dashboard/requests"
+        />
+        <KpiCard
+          loading={loading}
+          title="Verification backlog"
+          value={stats?.graves?.incomplete || 0}
+          comparison={stats ? `${stats.graves?.missingGps || 0} missing GPS` : ""}
+          icon={Archive}
+          iconVariant="danger"
+          href="/dashboard/verification"
+        />
+        <KpiCard
+          loading={loading}
+          title="Service signal"
+          value={stats?.feedback?.averageRating ? `${stats.feedback.averageRating} / 5` : "—"}
+          comparison={stats ? `${stats.feedback?.totalCount || 0} responses` : ""}
+          icon={MessageSquare}
+          iconVariant="primary"
+          href="/dashboard/feedback"
+        />
       </div>
 
-      {/* Stats Grid */}
-      {loading ? (
-        <div className="grid grid-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="stat-card">
-              <div className="skeleton" style={{ width: 48, height: 48, marginBottom: 12 }} />
-              <div className="skeleton" style={{ width: 80, height: 32, marginBottom: 8 }} />
-              <div className="skeleton" style={{ width: 120, height: 16 }} />
-            </div>
-          ))}
-        </div>
-      ) : stats ? (
-        <>
-          <div className="grid grid-4">
-            <div className="stat-card">
-              <div className="stat-icon stat-icon-primary"><Archive size={24} /></div>
-              <div className="stat-value">{stats.graves?.total || 0}</div>
-              <div className="stat-label">Total Grave Records</div>
-              <div style={{ marginTop: 8 }}>
-                <span className="badge badge-success" style={{ marginRight: 4 }}>
-                  {stats.graves?.active || 0} active
-                </span>
-                <span className="badge badge-muted">
-                  {stats.graves?.archived || 0} archived
-                </span>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon stat-icon-accent"><MapPin size={24} /></div>
-              <div className="stat-value">{stats.plots?.total || 0}</div>
-              <div className="stat-label">Total Plots</div>
-              <div style={{ marginTop: 8 }}>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${stats.plots?.occupancyRate || 0}%` }}
-                  />
-                </div>
-                <div className="text-xs text-muted" style={{ marginTop: 4 }}>
-                  {stats.plots?.occupancyRate || 0}% occupied · {stats.plots?.available || 0} available
-                </div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon stat-icon-warning"><ClipboardList size={24} /></div>
-              <div className="stat-value">{stats.requests?.pending || 0}</div>
-              <div className="stat-label">Pending Requests</div>
-              {(stats.requests?.pending || 0) > 0 && (
-                <Link
-                  href="/dashboard/requests"
-                  className="text-sm"
-                  style={{ marginTop: 8, display: "inline-block" }}
-                >
-                  Review now →
-                </Link>
-              )}
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon stat-icon-danger"><MessageSquare size={24} /></div>
-              <div className="stat-value">
-                {stats.feedback?.averageRating || "—"}
-                <span className="text-sm text-muted"> / 5</span>
-              </div>
-              <div className="stat-label">Avg. Feedback Rating</div>
-              <div className="text-xs text-muted" style={{ marginTop: 4 }}>
-                {stats.feedback?.totalCount || 0} total responses
-              </div>
-            </div>
+      {/* Main Grid: charts and queues */}
+      <div className="grid grid-2 mt-lg gap-lg" style={{ gridTemplateColumns: '7fr 5fr' }}>
+        
+        {/* Occupancy Chart */}
+        <div className="flex flex-col gap-sm">
+          <div>
+            <h3 className="text-lg font-bold" style={{ marginBottom: "2px" }}>Occupancy by location</h3>
+            <p className="text-sm text-muted">
+              Current capacity status across cemetery sections.
+            </p>
           </div>
-
-          {/* Quick Actions */}
-          <div style={{ marginTop: "var(--space-xl)" }}>
-            <h3 style={{ marginBottom: "var(--space-md)" }}>Quick Actions</h3>
-            <div className="grid grid-3">
-              <Link href="/dashboard/graves" className="card" style={{ textDecoration: "none" }}>
-                <div style={{ marginBottom: 8 }}><Archive size={32} color="var(--primary)" /></div>
-                <h4>Grave Records</h4>
-                <p className="text-sm text-muted">
-                  Search, add, or update burial records
-                </p>
-              </Link>
-
-              <Link href="/dashboard/map" className="card" style={{ textDecoration: "none" }}>
-                <div style={{ marginBottom: 8 }}><Map size={32} color="var(--accent)" /></div>
-                <h4>Cemetery Map</h4>
-                <p className="text-sm text-muted">
-                  Interactive navigation with grave markers
-                </p>
-              </Link>
-
-              <Link href="/dashboard/plots" className="card" style={{ textDecoration: "none" }}>
-                <div style={{ marginBottom: 8 }}><MapPin size={32} color="var(--warning)" /></div>
-                <h4>Plot Management</h4>
-                <p className="text-sm text-muted">
-                  View and manage burial plot availability
-                </p>
-              </Link>
-            </div>
-          </div>
-
-          {/* Archival Notice */}
-          {stats.graves?.newlyArchived > 0 && (
-            <div className="alert alert-info" style={{ marginTop: "var(--space-lg)", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Box size={16} /> {stats.graves.newlyArchived} record(s) automatically archived
-              (5-year rule applied).
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="empty-state">
-          <div className="empty-state-icon"><BarChart3 size={48} /></div>
-          <h3 className="empty-state-title">No Data Available</h3>
-          <p className="empty-state-text">
-            Connect your database and add records to see statistics here.
-          </p>
+          <Panel className="flex items-center justify-center flex-1" style={{ minHeight: "350px", height: '100%', animation: 'fadeUp 0.8s ease-out backwards' }}>
+            {loading ? (
+              <Skeleton style={{ height: "100%", width: "100%" }} />
+            ) : (
+              <OccupancyChart />
+            )}
+          </Panel>
         </div>
-      )}
-    </div>
+
+        {/* Prioritized Queue */}
+        <div className="flex flex-col gap-sm">
+          <div>
+            <h3 className="text-lg font-bold" style={{ marginBottom: "2px" }}>Operational queue</h3>
+            <p className="text-sm text-muted">
+              Oldest pending requests and verification blockers.
+            </p>
+          </div>
+          <div className="table-container flex-1 flex flex-col justify-between" style={{ minHeight: "350px", height: '100%', animation: 'fadeUp 0.8s ease-out 0.1s backwards' }}>
+            {loading ? (
+              <div className="flex flex-col p-4 gap-sm">
+                <Skeleton style={{ height: "40px", width: "100%" }} />
+                <Skeleton style={{ height: "40px", width: "100%" }} />
+                <Skeleton style={{ height: "40px", width: "100%" }} />
+              </div>
+            ) : (
+              <>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Task</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>Burial Request #492</div>
+                      </td>
+                      <td>
+                        <span className="text-xs text-muted">Pending for 2 days</span>
+                      </td>
+                      <td>
+                        <div className="action-buttons justify-center">
+                          <button className="action-btn" title="Review">
+                            <Eye size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>Missing GPS Coordinates</div>
+                      </td>
+                      <td>
+                        <span className="text-xs" style={{ color: "var(--danger)" }}>Blocker in Section B</span>
+                      </td>
+                      <td>
+                        <div className="action-buttons justify-center">
+                          <button className="action-btn" title="Locate">
+                            <MapPin size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>Transfer of Rights Request</div>
+                      </td>
+                      <td>
+                        <span className="text-xs text-muted">Pending for 1 day</span>
+                      </td>
+                      <td>
+                        <div className="action-buttons justify-center">
+                          <button className="action-btn" title="Review">
+                            <Eye size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>Maintenance Report #118</div>
+                      </td>
+                      <td>
+                        <span className="text-xs text-muted">Pending for 4 hours</span>
+                      </td>
+                      <td>
+                        <div className="action-buttons justify-center">
+                          <button className="action-btn" title="Review">
+                            <Eye size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>New Grave Record #992</div>
+                      </td>
+                      <td>
+                        <span className="text-xs" style={{ color: "var(--warning)" }}>Requires Approval</span>
+                      </td>
+                      <td>
+                        <div className="action-buttons justify-center">
+                          <button className="action-btn" title="Review">
+                            <Eye size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ padding: "12px", background: "rgba(255, 255, 255, 0.015)" }}>
+                  <Button variant="link" className="w-full" style={{ justifyContent: 'center', height: 'auto', padding: '0.25rem' }}>View all items</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Request trend */}
+        <div className="flex flex-col gap-sm" style={{ gridColumn: "1 / -1" }}>
+          <div>
+            <h3 className="text-lg font-bold" style={{ marginBottom: "2px" }}>Request trend and throughput</h3>
+            <p className="text-sm text-muted">
+              30-day volume of received vs completed requests.
+            </p>
+          </div>
+          <Panel className="flex items-center justify-center" style={{ height: "300px", animation: 'fadeUp 0.8s ease-out 0.2s backwards' }}>
+            {loading ? (
+              <Skeleton style={{ height: "100%", width: "100%" }} />
+            ) : (
+              <RequestTrendChart />
+            )}
+          </Panel>
+        </div>
+      </div>
+    </>
   );
 }

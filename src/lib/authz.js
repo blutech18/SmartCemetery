@@ -13,6 +13,7 @@
 
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { prisma } from "@/lib/db";
 
 /** Roles the platform recognizes. A JWT role claim outside this set -> 401. */
 export const ROLES = ["Admin", "Staff", "Client"];
@@ -26,6 +27,9 @@ export const PERMISSIONS = {
   layout: ["Admin"], // locations, plots create/update/delete
   graves: ["Admin"], // grave record management
   reports: ["Admin"], // report generation/export
+  analytics: ["Admin"],
+  broadcasts: ["Admin"],
+  encryption: ["Admin"],
   archival: ["Admin"],
   navigationLogs: ["Admin"],
   verify: ["Admin", "Staff"], // record verification, plot status
@@ -81,12 +85,24 @@ async function readToken(request) {
   }
 }
 
-/** Extract a normalized user from a verified token, or null if unusable. */
-function tokenToUser(token) {
-  if (!token) return null;
-  const role = token.role;
-  if (!ROLES.includes(role)) return null;
-  return { id: token.id, role };
+/** Resolve an active account and current role from the database. */
+async function tokenToUser(token) {
+  if (!token || token.disabled === true || !ROLES.includes(token.role)) return null;
+  const id = Number(token.id);
+  if (!Number.isInteger(id) || id <= 0) return null;
+
+  try {
+    const account = await prisma.user.findUnique({
+      where: { id },
+      select: { status: true, userType: { select: { typeName: true } } },
+    });
+    const role = account?.userType?.typeName;
+    if (account?.status !== "active" || !ROLES.includes(role)) return null;
+    return { id, role };
+  } catch {
+    // Authorization fails closed when account state cannot be verified.
+    return null;
+  }
 }
 
 /**
@@ -103,7 +119,7 @@ function tokenToUser(token) {
  */
 export async function requireRole(request, resource) {
   const token = await readToken(request);
-  const user = tokenToUser(token);
+  const user = await tokenToUser(token);
 
   if (!user) {
     return { ok: false, response: authErrorResponse() };
@@ -127,7 +143,7 @@ export async function requireRole(request, resource) {
  */
 export async function requireAuth(request) {
   const token = await readToken(request);
-  const user = tokenToUser(token);
+  const user = await tokenToUser(token);
 
   if (!user) {
     return { ok: false, response: authErrorResponse() };

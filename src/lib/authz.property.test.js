@@ -13,10 +13,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import fc from "fast-check";
 
-// Mock the JWT reader before importing the module under test.
+// Mock the JWT reader and active-account lookup before importing the module.
 vi.mock("next-auth/jwt", () => ({ getToken: vi.fn() }));
+vi.mock("@/lib/db", () => ({
+  prisma: { user: { findUnique: vi.fn() } },
+}));
 
 import { getToken } from "next-auth/jwt";
+import { prisma } from "@/lib/db";
 import { PERMISSIONS, ROLES, isAuthorized, requireRole } from "@/lib/authz";
 
 const RESOURCE_KEYS = Object.keys(PERMISSIONS);
@@ -60,6 +64,7 @@ describe("Property 4: Authorization decision matches the permission matrix", () 
 describe("Property 5: Unauthenticated or unauthorized requests are rejected before any mutation", () => {
   beforeEach(() => {
     getToken.mockReset();
+    prisma.user.findUnique.mockReset();
   });
 
   // Wrapper mirroring how a route handler uses the guard: the mutation only
@@ -80,6 +85,7 @@ describe("Property 5: Unauthenticated or unauthorized requests are rejected befo
     // Missing / expired / malformed -> getToken resolves null (or throws,
     // which readToken maps to null).
     fc.constant({ token: null }),
+    fc.constant({ token: { id: "disabled-user", role: "Admin", disabled: true } }),
     // Recognized-looking object but role not in ROLES.
     fc.record({
       token: fc.record({
@@ -126,7 +132,11 @@ describe("Property 5: Unauthenticated or unauthorized requests are rejected befo
   it("rejects recognized-but-unauthorized roles with 403 and never mutates", async () => {
     await fc.assert(
       fc.asyncProperty(forbidden403Arb, async ({ role, resource }) => {
-        getToken.mockResolvedValueOnce({ id: "user-1", role });
+        getToken.mockResolvedValueOnce({ id: "1", role });
+        prisma.user.findUnique.mockResolvedValueOnce({
+          status: "active",
+          userType: { typeName: role },
+        });
         const mutate = vi.fn(async () => "mutated");
 
         const outcome = await guardedMutate({}, resource, mutate);

@@ -113,7 +113,7 @@ export function getRoutingConfig(env = {}, { production = false } = {}) {
   };
 }
 
-/** Client-safe tile configuration for Leaflet components. */
+/** Client-safe tile configuration (retained for non–Google map fallbacks). */
 export function getClientTileConfig() {
   return resolveTileConfig(
     {
@@ -124,15 +124,20 @@ export function getClientTileConfig() {
   );
 }
 
-/** Client-safe pedestrian routing configuration. */
-export function getClientRoutingConfig() {
-  return getRoutingConfig(
-    {
-      ROUTING_BASE_URL: process.env.NEXT_PUBLIC_ROUTING_BASE_URL,
-      ROUTING_PROFILE: process.env.NEXT_PUBLIC_ROUTING_PROFILE,
-    },
-    { production: process.env.NODE_ENV === "production" }
-  );
+/**
+ * Client-safe Google Maps browser API key accessor (Req 4.9, §7 tech stack).
+ *
+ * The Maps JavaScript API runs in the browser, so the key must be exposed via
+ * a statically-referenced `NEXT_PUBLIC_` variable that Next.js inlines into the
+ * client bundle. The key itself is not a confidential server secret; it is
+ * protected by HTTP-referrer and API restrictions configured in Google Cloud.
+ * Returns an empty string when unset so callers can render a safe fallback.
+ *
+ * @returns {string}
+ */
+export function getClientGoogleMapsApiKey() {
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  return typeof key === "string" ? key.trim() : "";
 }
 
 /**

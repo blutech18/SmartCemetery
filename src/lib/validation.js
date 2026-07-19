@@ -185,14 +185,15 @@ export async function checkDuplicateGrave(prisma, deceasedName, burialDate, excl
  * A critical field is missing when:
  *   - deceasedName is null/undefined or contains only whitespace,
  *   - burialDate is null/undefined,
- *   - plotId is null/undefined.
+ *   - plotId is null/undefined,
+ *   - plotGps is absent or either coordinate is null/undefined.
  *
  * Returns both an explicit `missing` list using the canonical field names
- * ("deceasedName" | "burialDate" | "plotId") consumed by the incomplete-record
- * alert endpoint and property tests, and the human-readable `issues` list kept
- * for backward compatibility. Pure function (no I/O).
+ * ("deceasedName" | "burialDate" | "plotId" | "plotGps") consumed by the
+ * incomplete-record alert endpoint and property tests, and the human-readable
+ * `issues` list kept for backward compatibility. Pure function (no I/O).
  *
- * @param {{ deceasedName?: unknown, burialDate?: unknown, plotId?: unknown }} graveData
+ * @param {{ deceasedName?: unknown, burialDate?: unknown, plotId?: unknown, plotGps?: { lat?: unknown, lng?: unknown } | null }} graveData
  * @returns {{ isComplete: boolean, missing: string[], issues: string[] }}
  */
 export function validateRecordCompleteness(graveData) {
@@ -213,6 +214,16 @@ export function validateRecordCompleteness(graveData) {
   if (data.plotId === null || data.plotId === undefined) {
     missing.push("plotId");
     issues.push("Missing plot assignment");
+  }
+
+  const plotGps = data.plotGps;
+  if (
+    !plotGps ||
+    plotGps.lat === null || plotGps.lat === undefined ||
+    plotGps.lng === null || plotGps.lng === undefined
+  ) {
+    missing.push("plotGps");
+    issues.push("Missing plot GPS coordinates");
   }
 
   return {
