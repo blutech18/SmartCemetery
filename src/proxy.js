@@ -30,6 +30,14 @@ export default async function proxy(request) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Authenticated, but the role may not view this page. Send them to their own
+  // dashboard home instead of rendering a page whose actions would all 403.
+  if (decision.action === "denied") {
+    const homeUrl = new URL(decision.to, request.url);
+    homeUrl.searchParams.set("denied", "1");
+    return NextResponse.redirect(homeUrl);
+  }
+
   return NextResponse.next();
 }
 

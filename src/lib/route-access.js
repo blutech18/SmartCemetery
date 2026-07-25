@@ -31,6 +31,29 @@ const PROTECTED_PREFIX = "/dashboard";
 const DEFAULT_CALLBACK = "/dashboard";
 
 /**
+ * Role requirements for dashboard pages (Req 1.1–1.3, role scoping).
+ *
+ * Mirrors the API permission matrix in `src/lib/authz.js` so a signed-in user
+ * cannot reach a page whose actions they are not allowed to perform. Paths are
+ * matched at a path boundary, so `/dashboard/users/42` inherits the rule for
+ * `/dashboard/users`. Pages absent from this map are open to any authenticated
+ * role (e.g. dashboard home, map, notifications, feedback, requests).
+ *
+ * @type {Array<{ path: string, roles: string[] }>}
+ */
+export const ROUTE_ROLES = [
+  { path: "/dashboard/users", roles: ["Admin"] },
+  { path: "/dashboard/broadcasts", roles: ["Admin"] },
+  { path: "/dashboard/analytics", roles: ["Admin"] },
+  { path: "/dashboard/reports", roles: ["Admin"] },
+  { path: "/dashboard/locations", roles: ["Admin"] },
+  { path: "/dashboard/graves", roles: ["Admin", "Staff"] },
+  { path: "/dashboard/plots", roles: ["Admin", "Staff"] },
+  { path: "/dashboard/verification", roles: ["Admin", "Staff"] },
+  { path: "/dashboard/search", roles: ["Client"] },
+];
+
+/**
  * Normalize a `now` reference (Date or epoch milliseconds) to epoch ms.
  * Falls back to the current time when the value is not usable, so the guard
  * never crashes on a malformed caller-supplied clock.
@@ -101,6 +124,39 @@ export function isProtectedPath(pathname) {
 }
 
 /**
+ * Return the roles allowed to view `pathname`, or `null` when the page has no
+ * role restriction beyond authentication. The most specific matching rule wins.
+ *
+ * @param {string} pathname
+ * @returns {string[]|null}
+ */
+export function requiredRolesForPath(pathname) {
+  if (typeof pathname !== "string") return null;
+
+  let match = null;
+  for (const rule of ROUTE_ROLES) {
+    if (matchesBoundary(pathname, rule.path)) {
+      if (!match || rule.path.length > match.path.length) match = rule;
+    }
+  }
+  return match ? match.roles : null;
+}
+
+/**
+ * Decide whether `role` may view `pathname`. Unknown/missing roles are denied
+ * on restricted pages, never granted by default.
+ *
+ * @param {string|null|undefined} role
+ * @param {string} pathname
+ * @returns {boolean}
+ */
+export function canRoleAccessPath(role, pathname) {
+  const roles = requiredRolesForPath(pathname);
+  if (roles === null) return true;
+  return typeof role === "string" && roles.includes(role);
+}
+
+/**
  * Determine whether a decoded JWT is present, well-formed, and unexpired.
  *
  * The token is the *decoded* JWT object produced by NextAuth's `getToken`.
@@ -138,8 +194,11 @@ export function isTokenValid(token, now) {
  * - Any other (non-public, non-dashboard) path is allowed; protection scope is
  *   limited to the dashboard.
  *
+ * - Authenticated users lacking the required role for a restricted page are
+ *   redirected to the dashboard home ("denied").
+ *
  * @param {{ pathname: string, token: object|null|undefined, now?: Date|number }} params
- * @returns {{ action: "allow" } | { action: "redirect", to: "/login", callbackUrl: string }}
+ * @returns {{ action: "allow" } | { action: "redirect", to: "/login", callbackUrl: string } | { action: "denied", to: string }}
  */
 export function evaluateRouteAccess({ pathname, token, now } = {}) {
   const path = typeof pathname === "string" ? pathname : "";
@@ -152,11 +211,17 @@ export function evaluateRouteAccess({ pathname, token, now } = {}) {
     return { action: "allow" };
   }
 
-  if (isTokenValid(token, now)) {
-    return { action: "allow" };
+  if (!isTokenValid(token, now)) {
+    return { action: "redirect", to: "/login", callbackUrl: path };
   }
 
-  return { action: "redirect", to: "/login", callbackUrl: path };
+  // Authenticated but role-restricted: send the user back to their own
+  // dashboard home rather than leaking the page shell.
+  if (!canRoleAccessPath(token?.role, path)) {
+    return { action: "denied", to: DEFAULT_CALLBACK };
+  }
+
+  return { action: "allow" };
 }
 
 /**

@@ -4,6 +4,7 @@ import fc from "fast-check";
 import {
   evaluateRouteAccess,
   resolveCallback,
+  canRoleAccessPath,
   PUBLIC_PATHS,
   PUBLIC_API_PREFIXES,
 } from "@/lib/route-access";
@@ -61,7 +62,13 @@ describe("route-access property tests", () => {
         const decision = evaluateRouteAccess({ pathname, token, now: nowMs });
 
         if (tokenIsValid(token, nowMs)) {
-          expect(decision).toEqual({ action: "allow" });
+          // Authenticated: allowed only when the role may view the page,
+          // otherwise redirected back to the dashboard home.
+          if (canRoleAccessPath(token?.role, pathname)) {
+            expect(decision).toEqual({ action: "allow" });
+          } else {
+            expect(decision).toEqual({ action: "denied", to: "/dashboard" });
+          }
         } else {
           expect(decision).toEqual({
             action: "redirect",
