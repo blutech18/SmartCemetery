@@ -213,21 +213,22 @@ export default function AnalyticsPage() {
   );
 }
 
-function ChartPanel({ title, data, type, loading, icon: Icon, dataKey = "value", nameKey = "name" }) {
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
-          <p style={{ margin: '0 0 6px 0', color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>{label || payload[0].name}</p>
-          <p style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 700 }}>
-            {payload[0].value} <span style={{ fontSize: '0.875rem', fontWeight: 400, color: 'var(--text-muted)' }}>events</span>
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
+/** Chart tooltip. Declared at module scope so it keeps a stable identity. */
+function CustomTooltip({ active, payload, label }) {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '10px 14px', boxShadow: 'var(--shadow-md)' }}>
+        <p style={{ margin: '0 0 6px 0', color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>{label || payload[0].name}</p>
+        <p style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 700 }}>
+          {payload[0].value} <span style={{ fontSize: '0.875rem', fontWeight: 400, color: 'var(--text-muted)' }}>events</span>
+        </p>
+      </div>
+    );
+  }
+  return null;
+}
 
+function ChartPanel({ title, data, type, loading, icon: Icon, dataKey = "value", nameKey = "name" }) {
   return (
     <Panel style={{ display: "flex", flexDirection: "column", overflow: "hidden", padding: 0 }}>
       <div className="flex items-center gap-sm" style={{ padding: "var(--space-lg)", borderBottom: "1px solid var(--border-default)", background: "rgba(255, 255, 255, 0.02)" }}>

@@ -1,6 +1,20 @@
 import "./globals.css";
 import "./public.css";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+
+// Self-hosted by next/font: no remote @import, no render-blocking request.
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-jetbrains-mono",
+});
 
 export const metadata = {
   title: "Smart Cemetery — Navigation & Monitoring Platform",
@@ -29,7 +43,11 @@ const themeInitializer = `
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
       </head>

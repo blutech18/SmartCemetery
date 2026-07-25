@@ -3,10 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { MapPin, Map, Navigation, Pencil, Power, PowerOff } from "lucide-react";
+import { toast } from "sonner";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 
 export default function LocationsPage() {
   const { data: session, status: sessionStatus } = useSession();
   const isAdmin = session?.user?.role === "Admin";
+  const [pendingToggle, setPendingToggle] = useState(null);
+  const [toggling, setToggling] = useState(false);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -59,7 +63,7 @@ export default function LocationsPage() {
 
   async function toggleLocation(location) {
     const action = location.isActive ? "deactivate" : "reactivate";
-    if (!confirm(`Are you sure you want to ${action} ${location.name}? Existing sections, plots, and map references will be preserved.`)) return;
+    setToggling(true);
     try {
       const res = await fetch(`/api/locations/${location.id}`, {
         method: "PATCH",
@@ -68,9 +72,13 @@ export default function LocationsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || data.error || `Failed to ${action} location`);
+      toast.success(`${location.name} ${location.isActive ? "deactivated" : "reactivated"}`);
       await fetchLocations();
     } catch (err) {
-      alert(err.message || `Failed to ${action} location`);
+      toast.error(err.message || `Failed to ${action} location`);
+    } finally {
+      setToggling(false);
+      setPendingToggle(null);
     }
   }
 
@@ -94,12 +102,13 @@ export default function LocationsPage() {
         setEditingId(null);
         setForm({ name: "", description: "", gpsLat: "", gpsLng: "" });
         await fetchLocations();
+        toast.success(editingId ? "Location updated" : "Location created");
       } else {
         const err = await res.json();
-        alert(err.error?.message || err.error || `Failed to ${editingId ? "update" : "create"} location`);
+        toast.error(err.error?.message || err.error || `Failed to ${editingId ? "update" : "create"} location`);
       }
     } catch {
-      alert("An error occurred");
+      toast.error("An error occurred");
     }
     setSubmitting(false);
   }
@@ -163,7 +172,7 @@ export default function LocationsPage() {
                         </button>
                         <button 
                           className={`action-btn ${loc.isActive ? 'danger-icon' : ''}`} 
-                          onClick={() => toggleLocation(loc)} 
+                          onClick={() => setPendingToggle(loc)} 
                           title={`${loc.isActive ? "Deactivate" : "Reactivate"} ${loc.name}`}
                         >
                           {loc.isActive ? <PowerOff size={16} /> : <Power size={16} />}
@@ -233,6 +242,21 @@ export default function LocationsPage() {
           </p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingToggle)}
+        title={pendingToggle?.isActive ? "Deactivate this location?" : "Reactivate this location?"}
+        description={
+          pendingToggle
+            ? `${pendingToggle.name} will be ${pendingToggle.isActive ? "hidden from new assignments" : "made available again"}. Existing sections, plots, and map references are preserved either way.`
+            : ""
+        }
+        confirmLabel={pendingToggle?.isActive ? "Deactivate" : "Reactivate"}
+        tone={pendingToggle?.isActive ? "danger" : "primary"}
+        busy={toggling}
+        onConfirm={() => toggleLocation(pendingToggle)}
+        onCancel={() => setPendingToggle(null)}
+      />
 
       {/* Add/Edit Location Modal */}
       {showModal && isAdmin && (

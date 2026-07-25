@@ -1,10 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { MapPin, CheckCircle, Archive, Lock, Wrench, Plus, Edit2, Trash2, Crosshair, Search } from "lucide-react";
+import { toast } from "sonner";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 
 export default function PlotsPage() {
+  const { data: session } = useSession();
+  // Plot layout mutations are Admin-only (PERMISSIONS.layout); Staff view only.
+  const isAdmin = session?.user?.role === "Admin";
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [plots, setPlots] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -87,29 +95,38 @@ export default function PlotsPage() {
 
       if (res.ok) {
         setIsModalOpen(false);
+        toast.success(isEditing ? "Plot updated" : "Plot created");
         fetchPlots();
       } else if (res.status === 409) {
-        alert("Plot numbers must be unique per section.");
+        toast.error("Plot numbers must be unique per section.");
       } else if (res.status === 401 || res.status === 403) {
-        alert("You don't have permission to manage plots.");
+        toast.error("You don't have permission to manage plots.");
       } else {
-        alert("Failed to save plot.");
+        toast.error("Failed to save plot.");
       }
     } catch (err) {
       console.error(err);
-      alert("An error occurred");
+      toast.error("An error occurred");
     }
     setSaving(false);
   }
 
-  async function handleDeletePlot(id) {
-    if (!confirm("Are you sure you want to delete this plot?")) return;
+  async function handleDeletePlot(plot) {
+    setDeleting(true);
     try {
-      const res = await fetch(`/api/plots/${id}`, { method: "DELETE" });
-      if (res.ok) fetchPlots();
-      else alert("Failed to delete the plot. It may have grave records attached.");
+      const res = await fetch(`/api/plots/${plot.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success(`Plot ${plot.plotNumber} deleted`);
+        fetchPlots();
+      } else {
+        toast.error("Failed to delete the plot. It may have grave records attached.");
+      }
     } catch (err) {
       console.error(err);
+      toast.error("An error occurred");
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
     }
   }
 
@@ -146,9 +163,11 @@ export default function PlotsPage() {
           <h1 className="page-title">Plot Management</h1>
           <p className="page-subtitle">Manage plot details here — pin each plot&apos;s GPS location on the Map page</p>
         </div>
-        <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-          <Plus size={18} /> Add Plot
-        </button>
+        {isAdmin && (
+          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
+            <Plus size={18} /> Add Plot
+          </button>
+        )}
       </div>
 
       {unpinnedCount > 0 && (
@@ -245,7 +264,7 @@ export default function PlotsPage() {
                 <th>Status</th>
                 <th>Occupant</th>
                 <th>GPS</th>
-                <th>Actions</th>
+                {isAdmin && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -292,16 +311,28 @@ export default function PlotsPage() {
                         </Link>
                       )}
                     </td>
-                    <td>
-                      <div className="flex action-buttons">
-                        <button className="action-btn" onClick={() => handleOpenModal(plot)} title="Edit details">
-                          <Edit2 size={16} />
-                        </button>
-                        <button className="action-btn danger-icon" onClick={() => handleDeletePlot(plot.id)} title="Delete">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td>
+                        <div className="flex action-buttons">
+                          <button
+                            className="action-btn"
+                            onClick={() => handleOpenModal(plot)}
+                            title="Edit details"
+                            aria-label={`Edit plot ${plot.plotNumber}`}
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            className="action-btn danger-icon"
+                            onClick={() => setPendingDelete(plot)}
+                            title="Delete"
+                            aria-label={`Delete plot ${plot.plotNumber}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -338,6 +369,20 @@ export default function PlotsPage() {
           <p className="empty-state-text">No plots match your current filters.</p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete this plot?"
+        description={
+          pendingDelete
+            ? `Plot ${pendingDelete.plotNumber} will be permanently removed. This cannot be undone, and the plot cannot be deleted if a grave record is still attached to it.`
+            : ""
+        }
+        confirmLabel="Delete plot"
+        busy={deleting}
+        onConfirm={() => handleDeletePlot(pendingDelete)}
+        onCancel={() => setPendingDelete(null)}
+      />
 
       {/* Modal Overlay — plot DATA only */}
       {isModalOpen && (

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Search, Archive, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 
 const EMPTY_FORM = {
   deceasedName: "",
@@ -31,6 +33,8 @@ export default function GravesPage() {
   const [plots, setPlots] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchGraves = useCallback(async () => {
     // Skip default fetch if we are actively viewing search results
@@ -105,12 +109,13 @@ export default function GravesPage() {
         setEditingId(null);
         setForm(EMPTY_FORM);
         await Promise.all([fetchGraves(), fetchPlots()]);
+        toast.success(editingId ? "Record updated" : "Record created");
       } else {
         const err = await res.json();
-        alert(err.error?.message || err.error || `Failed to ${editingId ? "update" : "create"} record`);
+        toast.error(err.error?.message || err.error || `Failed to ${editingId ? "update" : "create"} record`);
       }
-    } catch (err) {
-      alert("An error occurred");
+    } catch {
+      toast.error("An error occurred");
     }
     setSubmitting(false);
   }
@@ -136,14 +141,18 @@ export default function GravesPage() {
   }
 
   async function deleteGrave(grave) {
-    if (!confirm(`Permanently delete the eligible record for ${grave.deceasedName}? This cannot be undone.`)) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/graves/${grave.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || data.error || "Failed to delete record");
+      toast.success(`Record for ${grave.deceasedName} deleted`);
       await Promise.all([fetchGraves(), fetchPlots()]);
     } catch (err) {
-      alert(err.message || "Failed to delete record");
+      toast.error(err.message || "Failed to delete record");
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
     }
   }
 
@@ -292,7 +301,7 @@ export default function GravesPage() {
                         <button className="action-btn" onClick={() => openEdit(grave)} title={`Edit ${grave.deceasedName}`} aria-label={`Edit ${grave.deceasedName}`}>
                           <Pencil size={16} />
                         </button>
-                        <button className="action-btn danger-icon" onClick={() => deleteGrave(grave)} title={`Delete ${grave.deceasedName}`} aria-label={`Delete ${grave.deceasedName}`}>
+                        <button className="action-btn danger-icon" onClick={() => setPendingDelete(grave)} title={`Delete ${grave.deceasedName}`} aria-label={`Delete ${grave.deceasedName}`}>
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -345,6 +354,20 @@ export default function GravesPage() {
           </p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Permanently delete this record?"
+        description={
+          pendingDelete
+            ? `The burial record for ${pendingDelete.deceasedName} will be permanently deleted and its plot released. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete record"
+        busy={deleting}
+        onConfirm={() => deleteGrave(pendingDelete)}
+        onCancel={() => setPendingDelete(null)}
+      />
 
       {/* Add/Edit Grave Modal */}
       {showModal && isAdmin && (

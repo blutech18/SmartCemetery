@@ -3,7 +3,9 @@
    Professional, minimalist dark UI.
    ═══════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Fonts are delivered by next/font in src/app/layout.js (self-hosted, no
+   render-blocking remote @import). The families below resolve to the CSS
+   variables that next/font exposes. */
 
 /* ── CSS Custom Properties ─────────────────────────────────── */
 :root {
@@ -89,9 +91,9 @@
   --radius-xl: 24px;
   --radius-full: 9999px;
 
-  /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Typography — families come from next/font (see src/app/layout.js). */
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'Fira Code', monospace;
 
   /* Transitions */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -2943,5 +2945,179 @@ html[data-theme="light"] .hf-badge {
   .report-parameter--generated {
     padding-left: 1rem;
     border-left: 1px solid #cbd5e1;
+  }
+}
+
+/* ── Sidebar groups & loading skeleton ────────────────────── */
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.sidebar-group + .sidebar-group {
+  margin-top: var(--space-sm);
+}
+.sidebar-group .sidebar-section-title {
+  padding: var(--space-sm) var(--space-sm) var(--space-xs);
+}
+.sidebar-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.5rem 0.25rem;
+}
+.sidebar-skeleton-row {
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--bg-hover) 25%,
+    var(--theme-hover-bg) 37%,
+    var(--bg-hover) 63%
+  );
+  background-size: 400% 100%;
+  animation: sidebar-shimmer 1.4s ease infinite;
+}
+@keyframes sidebar-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* Minimum 44px touch targets for primary navigation and controls. */
+.sidebar-link,
+.menu-toggle {
+  min-height: 44px;
+}
+
+/* ── Reduced motion ───────────────────────────────────────────
+   Honour the OS "reduce motion" setting: remove decorative
+   animation, background pulsing, and smooth scrolling while
+   keeping state changes perceivable.
+   ─────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Decorative motion is dropped entirely rather than sped up. */
+  .premium-bg-mesh,
+  .sidebar-skeleton-row {
+    animation: none !important;
+  }
+
+  /* Remove movement-based affordances; keep colour/border feedback. */
+  .card:hover,
+  .stat-card:hover,
+  .premium-feature-card:hover,
+  .search-result-premium:hover,
+  .sidebar-link:hover,
+  .public-theme-toggle:hover,
+  .btn:hover,
+  .btn:active {
+    transform: none !important;
+  }
+
+  .animate-fade-in,
+  .fade-in-up,
+  .hf-overlay,
+  .hf-cmd,
+  .hf-drawer {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ── Shared confirmation dialog ───────────────────────────── */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--theme-overlay, rgba(2, 6, 23, 0.6));
+  backdrop-filter: blur(4px);
+  animation: hf-fade-in 0.15s ease;
+}
+
+.confirm-dialog {
+  width: 440px;
+  max-width: 100%;
+  padding: 1.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: hf-pop-in 0.16s ease;
+}
+
+.confirm-dialog__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.confirm-dialog__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: var(--radius-md);
+}
+.confirm-dialog__icon--danger {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.12);
+}
+.confirm-dialog__icon--primary {
+  color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.confirm-dialog__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.confirm-dialog__body {
+  margin: 0 0 1.25rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+.confirm-dialog__actions .btn {
+  width: auto;
+  min-height: 44px;
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .confirm-dialog__actions {
+    flex-direction: column-reverse;
+  }
+  .confirm-dialog__actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Users, Search, Pencil, UserCheck, UserX, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 
 const ROLE_BADGE = { Admin: "badge-primary", Staff: "badge-warning", Client: "badge-muted" };
 const ROLE_TO_TYPE_ID = { Admin: "1", Staff: "2", Client: "3" };
@@ -24,6 +25,7 @@ export default function UsersPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [pendingDisable, setPendingDisable] = useState(null);
 
   const isAdmin = session?.user?.role === "Admin";
   const currentUserId = session?.user?.id != null ? Number(session.user.id) : null;
@@ -113,11 +115,16 @@ export default function UsersPage() {
     }
   }
 
-  async function toggleStatus(user) {
-    const nextStatus = user.status === "active" ? "disabled" : "active";
-    if (nextStatus === "disabled" && !confirm(`Disable ${user.name}? They will not be able to sign in.`)) {
+  function requestStatusChange(user) {
+    // Enabling is non-destructive, so it applies immediately; disabling asks.
+    if (user.status !== "active") {
+      void applyStatus(user, "active");
       return;
     }
+    setPendingDisable(user);
+  }
+
+  async function applyStatus(user, nextStatus) {
     setBusyId(user.id);
     try {
       const res = await fetch(`/api/users/${user.id}`, {
@@ -133,6 +140,7 @@ export default function UsersPage() {
       toast.error(error.message || "An error occurred");
     } finally {
       setBusyId(null);
+      setPendingDisable(null);
     }
   }
 
@@ -289,7 +297,7 @@ export default function UsersPage() {
                         </button>
                         <button
                           className={`icon-action ${user.status === "active" ? "danger" : "success"}`}
-                          onClick={() => toggleStatus(user)}
+                          onClick={() => requestStatusChange(user)}
                           disabled={isSelf || busyId === user.id}
                           title={isSelf ? "You cannot disable your own account" : user.status === "active" ? "Disable account" : "Enable account"}
                           aria-label={`${user.status === "active" ? "Disable" : "Enable"} ${user.name}`}
@@ -334,6 +342,20 @@ export default function UsersPage() {
           <p className="empty-state-text">No users match your current filters.</p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDisable)}
+        title="Disable this account?"
+        description={
+          pendingDisable
+            ? `${pendingDisable.name} (${pendingDisable.email}) will be signed out and blocked from signing in. Their records and history are preserved, and you can re-enable the account at any time.`
+            : ""
+        }
+        confirmLabel="Disable account"
+        busy={busyId === pendingDisable?.id}
+        onConfirm={() => applyStatus(pendingDisable, "disabled")}
+        onCancel={() => setPendingDisable(null)}
+      />
 
       {/* Add / Edit User Modal */}
       {showModal && (
