@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { MessageSquare, Star, Send, Activity, User, Calendar, Quote, CheckCircle2 } from "lucide-react";
+import { MessageSquare, Star, Send, Activity, User, Calendar, Quote, CheckCircle2, AlertTriangle } from "lucide-react";
 import { PageHeader } from "../../../components/dashboard/PageHeader";
 import { Panel } from "../../../components/ui/Panel";
-import { Skeleton } from "../../../components/ui/Skeleton";
 import { Badge } from "../../../components/ui/Badge";
 
 function getErrorMessage(body, fallback) {
@@ -19,6 +18,8 @@ export default function FeedbackPage() {
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
@@ -99,6 +100,9 @@ export default function FeedbackPage() {
     };
   });
 
+  const totalPages = Math.ceil(feedbacks.length / pageSize);
+  const paginatedFeedbacks = feedbacks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   // --- USER VIEW (Submit Feedback) ---
   if (!isAdmin && sessionStatus !== "loading") {
     return (
@@ -109,21 +113,17 @@ export default function FeedbackPage() {
         />
 
         {success && (
-          <Panel style={{ border: "1px solid var(--primary)", background: "rgba(46, 204, 113, 0.05)" }}>
-            <div className="flex items-center gap-md">
-              <CheckCircle2 size={24} style={{ color: "var(--primary)" }} />
-              <div>
-                <h3 style={{ margin: 0, color: "var(--text-primary)" }}>Feedback Submitted</h3>
-                <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "0.875rem" }}>{success}</p>
-              </div>
-            </div>
-          </Panel>
+          <div className="alert alert-success flex items-center gap-sm" role="status" aria-live="polite">
+            <CheckCircle2 size={18} aria-hidden="true" />
+            <span style={{ flex: 1 }}>{success}</span>
+          </div>
         )}
-        
+
         {error && (
-          <Panel style={{ border: "1px solid var(--danger)", background: "rgba(239, 68, 68, 0.05)" }}>
-            <p style={{ margin: 0, color: "var(--danger)" }}>{error}</p>
-          </Panel>
+          <div className="alert alert-danger flex items-center gap-sm" role="alert">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <span style={{ flex: 1 }}>{error}</span>
+          </div>
         )}
 
         <form onSubmit={handleSubmit}>
@@ -212,9 +212,11 @@ export default function FeedbackPage() {
       />
 
       {error && (
-        <Panel style={{ border: "1px solid var(--danger)", background: "rgba(239, 68, 68, 0.05)" }}>
-          <p style={{ margin: 0, color: "var(--danger)" }}>{error}</p>
-        </Panel>
+        <div className="alert alert-danger flex items-center gap-sm" role="alert">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button className="btn btn-ghost btn-sm" onClick={fetchFeedback}>Retry</button>
+        </div>
       )}
 
       {/* Analytics Summary */}
@@ -227,7 +229,7 @@ export default function FeedbackPage() {
               <Star key={index} size={28} fill={index < Math.round(Number(averageRating) || 0) ? "currentColor" : "transparent"} strokeWidth={1.5} />
             ))}
           </div>
-          <Badge variant="default" style={{ marginTop: 8 }}>{feedbacks.length} total responses</Badge>
+          <Badge variant="muted" style={{ marginTop: 8 }}>{feedbacks.length} total responses</Badge>
         </Panel>
 
         <Panel className="flex flex-col justify-center" style={{ padding: "32px" }}>
@@ -263,17 +265,12 @@ export default function FeedbackPage() {
         </h2>
         
         {loading || sessionStatus === "loading" ? (
-          <div className="flex flex-col gap-md">
-            {[1, 2, 3].map(i => (
-              <Panel key={i} className="flex flex-col gap-sm">
-                <Skeleton style={{ width: "100%", height: 40 }} />
-              </Panel>
-            ))}
+          <div className="flex justify-center" style={{ padding: "var(--space-3xl)" }} role="status" aria-label="Loading feedback">
+            <div className="spinner spinner-lg" />
           </div>
         ) : feedbacks.length ? (
-          <Panel style={{ padding: 0, overflow: "hidden" }}>
-            <div className="table-container" style={{ margin: 0 }}>
-              <table className="table" style={{ width: "100%", minWidth: "600px" }}>
+          <div className="table-container">
+            <table className="table" style={{ minWidth: "600px" }}>
                 <thead>
                   <tr>
                     <th>User</th>
@@ -283,46 +280,62 @@ export default function FeedbackPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {feedbacks.map((feedback) => (
+                  {paginatedFeedbacks.map((feedback) => (
                     <tr key={feedback.id}>
-                      <td style={{ verticalAlign: "top", paddingTop: "16px" }}>
-                        <div className="flex items-center gap-sm">
-                          <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{feedback.user?.name || "Anonymous"}</span>
-                        </div>
+                      <td>
+                        <span style={{ fontWeight: 600 }}>{feedback.user?.name || "Anonymous"}</span>
                       </td>
-                      <td style={{ verticalAlign: "top", paddingTop: "16px", color: "var(--text-muted)", fontSize: "0.875rem", whiteSpace: "nowrap" }}>
+                      <td className="text-sm text-muted" style={{ whiteSpace: "nowrap" }}>
                         {new Date(feedback.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                       </td>
-                      <td style={{ verticalAlign: "top", paddingTop: "16px", textAlign: "center" }}>
-                        <div className="flex gap-xs justify-center" style={{ color: "var(--warning)" }}>
+                      <td>
+                        <div
+                          className="flex gap-xs justify-center"
+                          style={{ color: "var(--warning)" }}
+                          aria-label={`${feedback.rating} out of 5 stars`}
+                        >
                           {Array.from({ length: 5 }).map((_, index) => (
                             <Star key={index} size={14} fill={index < feedback.rating ? "currentColor" : "transparent"} strokeWidth={index < feedback.rating ? 0 : 1.5} />
                           ))}
                         </div>
                       </td>
-                      <td style={{ verticalAlign: "top", paddingTop: "16px", paddingBottom: "16px" }}>
-                        {feedback.comment ? (
-                          <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.5 }}>
-                            {feedback.comment}
-                          </div>
-                        ) : (
-                          <span className="text-muted italic text-sm">No comment provided</span>
-                        )}
+                      <td className="text-sm">
+                        {feedback.comment
+                          ? <span style={{ color: "var(--text-secondary)" }}>{feedback.comment}</span>
+                          : <span className="text-muted text-sm">No comment provided</span>}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            <div className="table-footer">
+              <span className="text-sm text-muted">
+                Showing {feedbacks.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, feedbacks.length)} of {feedbacks.length} records
+              </span>
+              <div className="flex gap-sm">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => p - 1)}
+                >
+                  Previous
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={currentPage >= totalPages || totalPages === 0}
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
             </div>
-          </Panel>
+          </div>
         ) : (
-          <Panel className="flex flex-col items-center justify-center text-center" style={{ padding: "48px 24px", borderStyle: "dashed" }}>
-            <div style={{ background: "rgba(255, 255, 255, 0.05)", padding: 20, borderRadius: "50%", marginBottom: 16 }}>
-              <MessageSquare size={32} className="text-muted" />
-            </div>
-            <h3 style={{ margin: "0 0 8px 0", fontSize: "1.2rem" }}>No Feedback Yet</h3>
-            <p className="text-muted" style={{ margin: 0, maxWidth: 400 }}>When users submit ratings and feedback, they will appear here for you to review.</p>
-          </Panel>
+          <div className="empty-state">
+            <div className="empty-state-icon"><MessageSquare size={48} /></div>
+            <h3 className="empty-state-title">No Feedback Yet</h3>
+            <p className="empty-state-text">When users submit ratings and feedback, they will appear here for you to review.</p>
+          </div>
         )}
       </div>
     </div>

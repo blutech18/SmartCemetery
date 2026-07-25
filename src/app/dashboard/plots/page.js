@@ -338,7 +338,7 @@ export default function PlotsPage() {
               })}
             </tbody>
           </table>
-          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+          <div className="table-footer">
             <span className="text-sm text-muted">
               Showing {filteredPlots.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredPlots.length)} of {filteredPlots.length} records
             </span>

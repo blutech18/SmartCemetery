@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Check, ClipboardList, Search, X, Trash2 } from "lucide-react";
+import { Check, ClipboardList, Search, X, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
 
 function getErrorMessage(body, fallback) {
   return body?.error?.message || body?.error || fallback;
@@ -198,13 +198,15 @@ export default function RequestsPage() {
 
 
       {submitSuccess && (
-        <div className="card" role="status" aria-live="polite" style={{ marginBottom: "var(--space-lg)", color: "var(--accent)" }}>
-          {submitSuccess}
+        <div className="alert alert-success flex items-center gap-sm" role="status" aria-live="polite" style={{ marginBottom: "var(--space-lg)" }}>
+          <CheckCircle size={18} aria-hidden="true" />
+          <span style={{ flex: 1 }}>{submitSuccess}</span>
         </div>
       )}
       {error && (
-        <div className="card" role="alert" style={{ marginBottom: "var(--space-lg)", color: "var(--danger)" }}>
-          {error}
+        <div className="alert alert-danger flex items-center gap-sm" role="alert" style={{ marginBottom: "var(--space-lg)" }}>
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span style={{ flex: 1 }}>{error}</span>
         </div>
       )}
 
@@ -323,7 +325,7 @@ export default function RequestsPage() {
               ))}
             </tbody>
           </table>
-          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+          <div className="table-footer">
             <span className="text-sm text-muted">
               Showing {visibleRequests.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, visibleRequests.length)} of {visibleRequests.length} records
             </span>

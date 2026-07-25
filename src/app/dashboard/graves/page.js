@@ -319,7 +319,7 @@ export default function GravesPage() {
             </tbody>
           </table>
           
-          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+          <div className="table-footer">
             <span className="text-sm text-muted">
               Showing {currentStart} to {currentEnd} of {currentTotalRecords} records
             </span>

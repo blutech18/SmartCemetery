@@ -311,7 +311,7 @@ export default function UsersPage() {
               })}
             </tbody>
           </table>
-          <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--border-default)" }}>
+          <div className="table-footer">
             <span className="text-sm text-muted">
               Showing {filteredUsers.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredUsers.length)} of {filteredUsers.length} records
             </span>

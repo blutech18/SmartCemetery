@@ -1705,7 +1705,10 @@ a.btn {
   gap: var(--space-sm);
 }
 
-.alert-error {
+/* `.alert-danger` is an alias so pages can use the same danger/destructive
+   naming as buttons and badges. */
+.alert-error,
+.alert-danger {
   background: rgba(255, 107, 107, 0.1);
   border: 1px solid rgba(255, 107, 107, 0.2);
   color: var(--danger);
@@ -3119,5 +3122,31 @@ html[data-theme="light"] .hf-badge {
   .confirm-dialog__actions .btn {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* ── Shared table footer (results count + pagination) ─────────
+   Replaces repeated inline styles that referenced the undefined
+   --color-border token, so every data table divider matches.
+   ─────────────────────────────────────────────────────────── */
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border-default);
+}
+
+.table-footer .btn {
+  width: auto;
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .table-footer {
+    justify-content: center;
+    text-align: center;
   }
 }

@@ -170,7 +170,7 @@ export default function BroadcastsPage() {
                 </tr>
               ))}</tbody>
             </table>
-            <div className="flex justify-between items-center" style={{ padding: "var(--space-md) var(--space-lg)", borderTop: "1px solid var(--color-border)" }}>
+            <div className="table-footer">
               <span className="text-sm text-muted">
                 Showing {filteredBroadcasts.length === 0 ? 0 : ((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredBroadcasts.length)} of {filteredBroadcasts.length} records
               </span>

@@ -46,16 +46,25 @@ export default function DashboardSearchPage() {
         style={{ marginBottom: "var(--space-xl)" }}
       >
         <div className="flex gap-md items-center">
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Enter deceased name, grave ID, or year..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            autoFocus
-            style={{ flex: 1 }}
-            id="dashboard-search-input"
-          />
+          <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+            <Search
+              size={16}
+              className="text-muted"
+              style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Enter deceased name, grave ID, or year..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+              style={{ paddingLeft: 36 }}
+              id="dashboard-search-input"
+              aria-label="Search burial records"
+            />
+          </div>
           <button type="submit" className="btn btn-primary flex items-center justify-center gap-xs" id="dashboard-search-btn">
             <Search size={18} /> Search
           </button>

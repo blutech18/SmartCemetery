@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { AlertTriangle, CheckCircle, ClipboardCheck, RotateCcw, XCircle } from "lucide-react";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 
 export default function VerificationPage() {
   const { data: session, status: sessionStatus } = useSession();
@@ -13,6 +14,7 @@ export default function VerificationPage() {
   const [error, setError] = useState("");
   const [workingId, setWorkingId] = useState(null);
   const [notes, setNotes] = useState({});
+  const [pendingReject, setPendingReject] = useState(null);
 
   const loadRecords = useCallback(async () => {
     if (sessionStatus === "loading") return;
@@ -92,6 +94,10 @@ export default function VerificationPage() {
           <p className="empty-state-text">Every active grave has a name, burial date, plot assignment, and plot GPS coordinates.</p>
         </div>
       ) : records.length > 0 ? (
+        <>
+        <p className="text-sm text-muted" style={{ margin: "0 0 var(--space-md)" }}>
+          Showing {records.length} record{records.length === 1 ? "" : "s"} awaiting verification
+        </p>
         <div className="grid grid-2">
           {records.map((record) => (
             <article key={record.id} className="card">
@@ -127,7 +133,7 @@ export default function VerificationPage() {
                 <button className="btn btn-primary btn-sm" disabled={workingId === record.id} onClick={() => updateVerification(record, "verified")}>
                   <CheckCircle size={15} /> Re-check &amp; Verify
                 </button>
-                <button className="btn btn-ghost btn-sm" disabled={workingId === record.id} onClick={() => updateVerification(record, "rejected")} style={{ color: "var(--danger)" }}>
+                <button className="btn btn-danger btn-sm" disabled={workingId === record.id} onClick={() => setPendingReject(record)}>
                   <XCircle size={15} /> Reject
                 </button>
                 <button className="btn btn-ghost btn-sm" disabled={workingId === record.id} onClick={() => updateVerification(record, "pending")}>
@@ -137,7 +143,26 @@ export default function VerificationPage() {
             </article>
           ))}
         </div>
+        </>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingReject)}
+        title="Reject this record?"
+        description={
+          pendingReject
+            ? `The record for ${pendingReject.deceasedName?.trim() || `grave #${pendingReject.id}`} will be marked as rejected and returned for correction. Your verification note is saved with the decision.`
+            : ""
+        }
+        confirmLabel="Reject record"
+        busy={workingId === pendingReject?.id}
+        onConfirm={async () => {
+          const record = pendingReject;
+          await updateVerification(record, "rejected");
+          setPendingReject(null);
+        }}
+        onCancel={() => setPendingReject(null)}
+      />
     </div>
   );
 }
