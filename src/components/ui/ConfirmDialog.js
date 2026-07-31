@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
+import { useIsClient } from "../../lib/use-is-client";
 
 /**
  * Accessible confirmation dialog replacing browser `confirm()`.
@@ -24,6 +26,7 @@ export function ConfirmDialog({
 }) {
   const dialogRef = useRef(null);
   const confirmRef = useRef(null);
+  const mounted = useIsClient();
 
   useEffect(() => {
     if (!open) return undefined;
@@ -65,9 +68,9 @@ export function ConfirmDialog({
     };
   }, [open, busy, onCancel]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
       className="confirm-overlay"
       onClick={() => { if (!busy) onCancel?.(); }}
@@ -108,6 +111,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

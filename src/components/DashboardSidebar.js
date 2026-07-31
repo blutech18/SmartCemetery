@@ -105,7 +105,8 @@ export default function DashboardSidebar() {
   // Only render role navigation once the session resolves, so a Client menu
   // never flashes for an Admin/Staff user.
   const resolved = status !== "loading";
-  const groups = resolved ? NAV_GROUPS[session?.user?.role] || NAV_GROUPS.Client : [];
+  const role = session?.user?.role || "Client";
+  const groups = resolved ? NAV_GROUPS[role] || NAV_GROUPS.Client : [];
 
   // Drawer accessibility: Escape to close, focus containment, focus return,
   // and body-scroll lock while open.
@@ -153,6 +154,11 @@ export default function DashboardSidebar() {
       else toggleButton?.focus();
     };
   }, [mobileOpen]);
+
+  // Staff and Client users use top secondary sub-navigation bar instead of vertical left sidebar
+  if (role === "Staff" || role === "Client") {
+    return null;
+  }
 
   return (
     <>

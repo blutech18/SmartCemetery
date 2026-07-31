@@ -2,12 +2,36 @@
 
 import { useSession, signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
+import { createPortal } from "react-dom";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   Search, Moon, Sun, Bell, User, LogOut, X, CornerDownLeft,
   LayoutDashboard, Archive, MapPin, Map, ClipboardList, Users,
   MessageSquare, LineChart, Megaphone, BarChart3, BadgeCheck, CheckCheck,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useIsClient } from "@/lib/use-is-client";
+
+const STAFF_NAV_ITEMS = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Graves", href: "/dashboard/graves", icon: Archive },
+  { label: "Verification", href: "/dashboard/verification", icon: BadgeCheck },
+  { label: "Plots", href: "/dashboard/plots", icon: MapPin },
+  { label: "Map", href: "/dashboard/map", icon: Map },
+  { label: "Requests", href: "/dashboard/requests", icon: ClipboardList },
+  { label: "Notifications", href: "/dashboard/notifications", icon: Bell },
+  { label: "Feedback", href: "/dashboard/feedback", icon: MessageSquare },
+];
+
+const CLIENT_NAV_ITEMS = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Search Graves", href: "/dashboard/search", icon: Search },
+  { label: "Interactive Map", href: "/dashboard/map", icon: Map },
+  { label: "My Requests", href: "/dashboard/requests", icon: ClipboardList },
+  { label: "Notifications", href: "/dashboard/notifications", icon: Bell },
+  { label: "Feedback", href: "/dashboard/feedback", icon: MessageSquare },
+];
 
 /* Searchable destinations by role (mirrors the sidebar navigation). */
 const ROUTES = {
@@ -66,6 +90,7 @@ export default function DashboardHeader() {
   const router = useRouter();
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const mounted = useIsClient();
 
   // Theme is initialized before paint in the root layout. null keeps SSR and
   // the first client render identical while the control synchronizes.
@@ -85,6 +110,13 @@ export default function DashboardHeader() {
   const role = session?.user?.role || "Client";
   const userName = session?.user?.name || "User";
   const routes = ROUTES[role] || ROUTES.Client;
+
+  // Set data-role attribute on html element for role-specific CSS layout overrides
+  useEffect(() => {
+    if (role) {
+      document.documentElement.setAttribute("data-role", role.toLowerCase());
+    }
+  }, [role]);
 
   const paths = pathname ? pathname.split("/").filter(Boolean) : [];
   const currentPage = paths.length > 1
@@ -245,9 +277,19 @@ export default function DashboardHeader() {
   return (
     <>
       <header className="header">
-        {/* Left side: Breadcrumbs */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
-          <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{currentPage}</span>
+        {/* Left side: Breadcrumbs & Brand Title for Staff/Client */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
+          {(role === "Staff" || role === "Client") && (
+            <>
+              <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem", letterSpacing: "-0.01em" }}>
+                Bolonsori Public Cemetery
+              </span>
+              <span style={{ color: "var(--text-muted)", opacity: 0.5 }}>/</span>
+            </>
+          )}
+          <span style={{ color: (role === "Staff" || role === "Client") ? "var(--text-secondary)" : "var(--text-primary)", fontWeight: 500 }}>
+            {currentPage}
+          </span>
         </div>
 
         {/* Right side: Actions & Profile */}
@@ -330,8 +372,31 @@ export default function DashboardHeader() {
         </div>
       </header>
 
+      {/* ── Secondary Header Sub-Navigation (Staff & Client) ─────────────── */}
+      {(role === "Staff" || role === "Client") && (
+        <nav className="staff-secondary-header" aria-label={`${role} Navigation`}>
+          <div className="staff-nav-container">
+            {(role === "Staff" ? STAFF_NAV_ITEMS : CLIENT_NAV_ITEMS).map((item) => {
+              const Icon = item.icon;
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`staff-nav-link ${active ? "active" : ""}`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <Icon size={16} className="staff-nav-icon" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+
       {/* ── Command Palette ─────────────────────────────── */}
-      {showSearch && (
+      {showSearch && mounted && createPortal(
         <>
           <div className="hf-overlay" onClick={() => setShowSearch(false)} />
           <div className="hf-cmd-wrap">
@@ -376,11 +441,12 @@ export default function DashboardHeader() {
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── Notification Drawer ─────────────────────────── */}
-      {showNotif && (
+      {showNotif && mounted && createPortal(
         <>
           <div className="hf-overlay" onClick={() => setShowNotif(false)} />
           <aside className="hf-drawer" role="dialog" aria-label="Notifications">
@@ -446,49 +512,21 @@ export default function DashboardHeader() {
               </button>
             </div>
           </aside>
-        </>
+        </>,
+        document.body
       )}
 
       {/* Logout Confirmation Modal */}
-      {showLogoutModal && (
-        <div style={{
-          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
-        }}>
-          <div style={{
-            background: "var(--bg-surface)", padding: "2rem", borderRadius: "12px",
-            border: "1px solid var(--border-default)", maxWidth: "400px", width: "90%",
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
-          }}>
-            <h3 style={{ margin: "0 0 1rem 0", color: "var(--text-primary)", fontSize: "1.25rem" }}>Sign Out</h3>
-            <p style={{ color: "var(--text-secondary)", marginBottom: "1.5rem", fontSize: "0.95rem", lineHeight: 1.5 }}>
-              Are you sure you want to sign out of your account?
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem" }}>
-              <button
-                onClick={() => setShowLogoutModal(false)}
-                className="btn btn-ghost"
-                style={{ padding: "0.5rem 1rem" }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                style={{
-                  padding: "0.5rem 1.25rem", background: "var(--danger)", border: "none",
-                  color: "#fff", borderRadius: "6px", cursor: "pointer", fontWeight: 600,
-                  transition: "background 0.2s ease",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "#dc2626")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "var(--danger)")}
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showLogoutModal}
+        title="Sign Out"
+        description="Are you sure you want to sign out of your account?"
+        confirmLabel="Sign Out"
+        cancelLabel="Cancel"
+        tone="danger"
+        onConfirm={() => signOut({ callbackUrl: "/login" })}
+        onCancel={() => setShowLogoutModal(false)}
+      />
     </>
   );
 }

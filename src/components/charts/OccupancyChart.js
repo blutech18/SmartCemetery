@@ -4,13 +4,18 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 export function OccupancyChart({ data }) {
-  // Use mock data if no data provided
-  const chartData = data || [
-    { name: 'Section A', occupied: 120, available: 40 },
-    { name: 'Section B', occupied: 85, available: 60 },
-    { name: 'Section C', occupied: 200, available: 15 },
-    { name: 'Section D', occupied: 45, available: 110 },
-  ];
+  const chartData = Array.isArray(data) ? data : [];
+
+  if (chartData.length === 0) {
+    return (
+      <div
+        className="flex items-center justify-center"
+        style={{ width: "100%", height: "100%", color: "var(--text-muted)", fontSize: "0.9rem" }}
+      >
+        No occupancy data available yet.
+      </div>
+    );
+  }
 
   const renderLegend = (props) => {
     const { payload } = props;

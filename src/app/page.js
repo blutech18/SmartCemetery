@@ -79,7 +79,7 @@ export default function LandingPage() {
         <div className="premium-feature-card">
           <div className="premium-feature-header">
             <div className="premium-feature-icon">
-              <Map size={28} />
+              <Map />
             </div>
             <h3 className="premium-feature-title">Interactive Map</h3>
           </div>
@@ -91,7 +91,7 @@ export default function LandingPage() {
         <div className="premium-feature-card">
           <div className="premium-feature-header">
             <div className="premium-feature-icon">
-              <Fingerprint size={28} />
+              <Fingerprint />
             </div>
             <h3 className="premium-feature-title">Smart Directory</h3>
           </div>
@@ -103,7 +103,7 @@ export default function LandingPage() {
         <div className="premium-feature-card">
           <div className="premium-feature-header">
             <div className="premium-feature-icon">
-              <BarChart3 size={28} />
+              <BarChart3 />
             </div>
             <h3 className="premium-feature-title">Data Insights</h3>
           </div>

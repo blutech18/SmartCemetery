@@ -4,16 +4,18 @@ import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export function RequestTrendChart({ data }) {
-  // Use mock data if no data provided
-  const chartData = data || [
-    { date: '1', received: 12, completed: 10 },
-    { date: '5', received: 15, completed: 14 },
-    { date: '10', received: 8, completed: 12 },
-    { date: '15', received: 22, completed: 18 },
-    { date: '20', received: 18, completed: 20 },
-    { date: '25', received: 25, completed: 22 },
-    { date: '30', received: 14, completed: 19 },
-  ];
+  const chartData = Array.isArray(data) ? data : [];
+
+  if (chartData.length === 0) {
+    return (
+      <div
+        className="flex items-center justify-center"
+        style={{ width: "100%", height: "100%", color: "var(--text-muted)", fontSize: "0.9rem" }}
+      >
+        No request activity in this period.
+      </div>
+    );
+  }
 
   return (
     <ResponsiveContainer width="100%" height="100%">

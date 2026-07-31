@@ -31,7 +31,12 @@ export const authOptions = {
           // the attempt. Do not reveal whether an account exists.
           throw new Error("Service temporarily unavailable. Please try again later.");
         }
-        if (!throttle.allowed) return null;
+        if (!throttle.allowed) {
+          const retryMinutes = Math.ceil(throttle.retryAfterSeconds / 60);
+          throw new Error(
+            `Too many login attempts. Your account is temporarily locked. Please try again in ${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}.`
+          );
+        }
 
         let user;
         try {
@@ -43,10 +48,14 @@ export const authOptions = {
           throw new Error("Database connection failed. Please try again later.");
         }
 
-        if (!user || user.status !== "active") return null;
+        if (!user || user.status !== "active") {
+          throw new Error("Invalid email or password. Please check your credentials and try again.");
+        }
 
         const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!isValid) return null;
+        if (!isValid) {
+          throw new Error("Invalid email or password. Please check your credentials and try again.");
+        }
         await clearRateLimit(throttle.key).catch(() => {});
 
         return {

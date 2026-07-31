@@ -34,11 +34,27 @@ function LoginForm() {
       });
 
       if (result?.error) {
-        const message = result.error === "CredentialsSignin" 
-          ? "Invalid email or password. Please try again."
-          : result.error;
+        // NextAuth passes thrown Error messages through result.error directly.
+        // The generic "CredentialsSignin" means authorize() returned null (shouldn't happen now).
+        let message;
+        if (result.error === "CredentialsSignin") {
+          message = "Invalid email or password. Please check your credentials and try again.";
+        } else {
+          // Decode URI-encoded error messages from NextAuth
+          try {
+            message = decodeURIComponent(result.error);
+          } catch {
+            message = result.error;
+          }
+        }
         setError(message);
-        toast.error(message, { id: "login-error", duration: 4000 });
+        if (message.includes("Too many")) {
+          toast.warning(message, { id: "login-error", duration: 8000 });
+        } else if (message.includes("Service") || message.includes("Database")) {
+          toast.info(message, { id: "login-error", duration: 6000 });
+        } else {
+          toast.error(message, { id: "login-error", duration: 5000 });
+        }
       } else {
         toast.dismiss("login-error");
         // Honor only safe internal /dashboard callbacks; otherwise fall back
@@ -176,16 +192,7 @@ function LoginForm() {
             </button>
           </form>
 
-          <div
-            id="login-credentials-error"
-            role="alert"
-            aria-live="assertive"
-            aria-atomic="true"
-            className="sr-only"
-          >
-            <AlertTriangle size={16} aria-hidden="true" />
-            {error}
-          </div>
+
 
           {/* Mobile Back Link */}
           <div style={{ marginTop: '2.5rem', textAlign: 'center', display: 'block' }} className="mobile-only-link">
