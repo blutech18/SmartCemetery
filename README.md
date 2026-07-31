@@ -144,6 +144,10 @@ The system follows a three-tier structure within the Next.js framework:
 - Audit logging of record changes and key interactions.
 - Privacy-safe analytics that avoid exposing personal identifiers.
 
+## Deployment
+
+See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full production runbook: environment configuration, database setup and migrations, scheduled archival secrets, encryption key rotation, pre-release verification gates, and a post-deploy smoke checklist.
+
 ## License
 
 This project is developed as an academic capstone for Bolonsori Public Cemetery. Usage and distribution are subject to the project owners' terms.
