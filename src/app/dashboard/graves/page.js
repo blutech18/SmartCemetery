@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { Search, Archive, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 
 const EMPTY_FORM = {
   deceasedName: "",
@@ -28,6 +29,7 @@ export default function GravesPage() {
   const [totalRecords, setTotalRecords] = useState(0);
   const pageSize = 10;
   const [showModal, setShowModal] = useState(false);
+  useBodyScrollLock(showModal);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [plots, setPlots] = useState([]);
@@ -461,7 +463,7 @@ export default function GravesPage() {
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 />
               </div>
-              <div className="flex gap-sm" style={{ marginTop: "var(--space-xl)" }}>
+              <div className="flex gap-sm" style={{ marginTop: "0.75rem" }}>
                 <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowModal(false)}>
                   Cancel
                 </button>

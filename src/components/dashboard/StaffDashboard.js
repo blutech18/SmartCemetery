@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   BadgeCheck, MapPin, ClipboardList, Bell, Archive, Eye,
   ArrowRight, CheckCircle2, AlertTriangle, Layers, Clock,
-  ShieldCheck, FileText, Search
+  ShieldCheck, FileText, Search, Compass
 } from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { KpiCard } from "./KpiCard";
@@ -41,7 +41,8 @@ export function StaffDashboard({ userName }) {
       .then(([incompleteData, plotData, requestData, notificationData]) => {
         const rows = Array.isArray(incompleteData) ? incompleteData : incompleteData?.graves;
         if (Array.isArray(rows)) setIncomplete(rows);
-        if (Array.isArray(plotData)) setPlots(plotData);
+        const plotRows = Array.isArray(plotData) ? plotData : (plotData?.plots || []);
+        if (Array.isArray(plotRows)) setPlots(plotRows);
         if (Array.isArray(requestData)) setRequests(requestData);
         if (Array.isArray(notificationData)) setNotifications(notificationData);
       })
@@ -74,9 +75,9 @@ export function StaffDashboard({ userName }) {
         description="Verify records, monitor plot status, and assist visitors."
         actions={
           <>
-            <Button variant="secondary" href="/dashboard/map">
-              <MapPin size={16} />
-              Open map
+            <Button variant="secondary" href="/dashboard/map?locate=bolonsiri">
+              <Compass size={16} />
+              Locate Bolonsiri
             </Button>
             <Button variant="primary" href="/dashboard/verification">
               <BadgeCheck size={16} />

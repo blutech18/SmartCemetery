@@ -6,6 +6,7 @@ import Link from "next/link";
 import { MapPin, CheckCircle, Archive, Lock, Wrench, Plus, Edit2, Trash2, Crosshair, Search } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 
 export default function PlotsPage() {
   const { data: session } = useSession();
@@ -24,6 +25,7 @@ export default function PlotsPage() {
 
   // Modal state — plot DATA only (number, section, status). GPS is pinned on the Map page.
   const [isModalOpen, setIsModalOpen] = useState(false);
+  useBodyScrollLock(isModalOpen);
   const [isEditing, setIsEditing] = useState(false);
   const [currentPlot, setCurrentPlot] = useState({ id: null, plotNumber: "", locationDetailId: "", status: "available" });
   const [saving, setSaving] = useState(false);
@@ -386,14 +388,10 @@ export default function PlotsPage() {
 
       {/* Modal Overlay — plot DATA only */}
       {isModalOpen && (
-        <div style={{
-          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: "rgba(0,0,0,0.5)", zIndex: 1000,
-          display: "flex", justifyContent: "center", alignItems: "center",
-        }}>
-          <div className="modal">
-            <div className="flex justify-between items-center" style={{ marginBottom: "var(--space-lg)" }}>
-              <h2>{isEditing ? "Edit Plot" : "Add Plot"}</h2>
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center" style={{ marginBottom: "0.85rem" }}>
+              <h2 style={{ fontSize: "1.2rem", margin: 0 }}>{isEditing ? "Edit Plot" : "Add Plot"}</h2>
               <button className="modal-close" onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
 
@@ -456,7 +454,7 @@ export default function PlotsPage() {
                 </span>
               </div>
 
-              <div className="flex gap-sm" style={{ marginTop: "var(--space-md)" }}>
+              <div className="flex gap-sm" style={{ marginTop: "0.75rem" }}>
                 <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setIsModalOpen(false)} disabled={saving}>Cancel</button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} disabled={saving}>
                   {saving ? "Saving..." : isEditing ? "Save Changes" : "Create Plot"}

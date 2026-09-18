@@ -26,28 +26,32 @@ export function KpiCard({
     );
   }
 
-  const iconClass = `stat-icon stat-icon-${iconVariant}`;
+  const iconColors = {
+    primary: 'var(--primary-light)',
+    accent: 'var(--accent)',
+    warning: 'var(--warning)',
+    danger: 'var(--danger)',
+  };
+  const iconColor = iconColors[iconVariant] || iconColors.primary;
 
   return (
-    <CardComponent {...cardProps} style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <CardComponent {...cardProps} style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div className="flex items-center justify-between">
-        <div className="stat-label" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{title}</div>
+        <div className="stat-label" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500 }}>{title}</div>
         {Icon && (
-          <Icon 
-            size={28} 
-            style={{ 
-              color: iconVariant === 'primary' ? 'var(--primary-light)' : 
-                     iconVariant === 'accent' ? 'var(--accent)' : 
-                     iconVariant === 'warning' ? 'var(--warning)' : 
-                     iconVariant === 'danger' ? 'var(--danger)' : 'inherit'
-            }} 
-          />
+          <Icon size={24} style={{ color: iconColor, flexShrink: 0 }} />
         )}
       </div>
-      <div className="stat-value" style={{ marginBottom: 0, fontSize: '1.875rem' }}>{value}</div>
+      <div className="stat-value" style={{ marginBottom: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+        {value}
+      </div>
       {comparison && (
-        <div className="text-xs text-muted" style={{ marginTop: 'auto' }}>
-          {comparison}
+        <div style={{ marginTop: 'auto', paddingTop: '2px' }}>
+          {typeof comparison === 'string' ? (
+            <div className="text-xs text-muted">{comparison}</div>
+          ) : (
+            comparison
+          )}
         </div>
       )}
     </CardComponent>

@@ -34,7 +34,7 @@ export function PageHeader({
         {description && <p className="page-subtitle">{description}</p>}
       </div>
       {actions && (
-        <div className="flex items-center gap-md mt-md">
+        <div className="flex items-center gap-sm flex-wrap">
           {actions}
         </div>
       )}

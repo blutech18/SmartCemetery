@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleMap, MarkerF, PolylineF, InfoWindowF, useJsApiLoader } from "@react-google-maps/api";
-import { Check } from "lucide-react";
+import { Check, Compass, ChevronDown } from "lucide-react";
 import { getClientMapCenter, getClientGoogleMapsApiKey } from "../lib/config";
 
 function statusColor(status) {
@@ -104,6 +104,18 @@ export default function CemeteryMap({
     [routeCoords]
   );
 
+  // Smoothly fit bounds when navigation route coords are provided
+  useEffect(() => {
+    if (!map || !window.google?.maps || routePath.length < 2) return;
+    try {
+      const bounds = new window.google.maps.LatLngBounds();
+      routePath.forEach((pt) => bounds.extend(pt));
+      map.fitBounds(bounds, { top: 70, right: 60, bottom: 80, left: 60 });
+    } catch {
+      // ignore
+    }
+  }, [map, routePath]);
+
   const handleMapClick = useCallback(
     (event) => {
       if (placingMode && typeof onMapClick === "function" && event.latLng) {
@@ -132,144 +144,244 @@ export default function CemeteryMap({
 
   return (
     <div style={WRAPPER_STYLE}>
+      {/* Custom Clean Map Type Controls */}
       <div style={{ 
         position: "absolute", 
-        top: 24, 
-        left: 24, 
+        top: 20, 
+        left: 20, 
         zIndex: 10, 
         display: "flex", 
-        background: "rgba(15, 23, 42, 0.7)", 
+        gap: 4,
+        background: "rgba(15, 23, 42, 0.82)", 
         backdropFilter: "blur(12px)",
-        borderRadius: "var(--radius-md)", 
-        border: "1px solid rgba(255,255,255,0.05)", 
-        boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        WebkitBackdropFilter: "blur(12px)",
+        borderRadius: "var(--radius-md, 10px)", 
+        border: "1px solid rgba(255, 255, 255, 0.1)", 
+        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.35)",
         padding: "4px"
       }}>
-        <div style={{ position: "relative" }} onMouseLeave={() => setShowMapMenu(false)}>
+        {/* Map Button & Dropdown */}
+        <div 
+          style={{ position: "relative", width: 110 }} 
+          onMouseLeave={() => setShowMapMenu(false)}
+        >
           <button 
+            type="button"
             onMouseEnter={() => setShowMapMenu(true)}
             onClick={() => setMapTypeId(mapTypeId === "terrain" ? "terrain" : "roadmap")} 
             style={{ 
-              padding: "6px 14px", 
-              background: (mapTypeId === "roadmap" || mapTypeId === "terrain") ? "rgba(255,255,255,0.1)" : "transparent", 
-              color: (mapTypeId === "roadmap" || mapTypeId === "terrain") ? "#ffffff" : "var(--text-muted)", 
+              width: "100%",
+              padding: "7px 12px", 
+              background: (mapTypeId === "roadmap" || mapTypeId === "terrain") ? "rgba(255, 255, 255, 0.14)" : "transparent", 
+              color: (mapTypeId === "roadmap" || mapTypeId === "terrain") ? "#ffffff" : "#94a3b8", 
               border: "none", 
-              borderRadius: "var(--radius-sm)",
+              borderRadius: "var(--radius-sm, 6px)",
               cursor: "pointer", 
-              fontWeight: 500, 
+              fontWeight: (mapTypeId === "roadmap" || mapTypeId === "terrain") ? 600 : 500, 
               fontSize: "0.85rem", 
-              transition: "all 0.2s",
+              transition: "all 0.2s ease",
               display: "flex",
               alignItems: "center",
-              gap: 4
+              justifyContent: "space-between",
+              boxSizing: "border-box"
             }}
           >
-            Map <span style={{ fontSize: "0.6rem", opacity: 0.7 }}>▼</span>
+            <span>Map</span>
+            <ChevronDown size={13} style={{ opacity: 0.75, transition: "transform 0.2s ease", transform: showMapMenu ? "rotate(180deg)" : "none" }} />
           </button>
           
           {showMapMenu && (
-            <div style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              paddingTop: 8,
-              zIndex: 20
-            }}>
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                width: "100%",
+                paddingTop: 6,
+                zIndex: 20
+              }}
+            >
               <div style={{
-                background: "rgba(15, 23, 42, 0.9)",
+                width: "100%",
+                boxSizing: "border-box",
+                background: "rgba(15, 23, 42, 0.95)",
                 backdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.05)",
-                borderRadius: "var(--radius-md)",
-                padding: "10px 14px",
-                minWidth: "120px",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+                WebkitBackdropFilter: "blur(12px)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: "var(--radius-md, 8px)",
+                padding: "8px 10px",
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)"
               }}>
                 <div 
                   onClick={() => setMapTypeId(mapTypeId === "terrain" ? "roadmap" : "terrain")}
-                  style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.875rem", cursor: "pointer", color: "#e2e8f0" }}
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: 8, 
+                    fontSize: "0.85rem", 
+                    cursor: "pointer", 
+                    color: "#f1f5f9",
+                    userSelect: "none"
+                  }}
                 >
                   <div style={{ 
-                    width: 18, 
-                    height: 18, 
-                    borderRadius: 4, 
-                    border: mapTypeId === "terrain" ? "none" : "1px solid rgba(255,255,255,0.3)",
-                    background: mapTypeId === "terrain" ? "var(--primary)" : "transparent",
+                    width: 16, 
+                    height: 16, 
+                    borderRadius: 3, 
+                    border: mapTypeId === "terrain" ? "none" : "1px solid rgba(255, 255, 255, 0.35)",
+                    background: mapTypeId === "terrain" ? "var(--primary, #3b82f6)" : "transparent",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    transition: "all 0.2s"
+                    flexShrink: 0,
+                    transition: "all 0.15s ease"
                   }}>
-                    {mapTypeId === "terrain" && <Check size={14} color="#0f172a" strokeWidth={3} />}
+                    {mapTypeId === "terrain" && <Check size={12} color="#ffffff" strokeWidth={3} />}
                   </div>
-                  Terrain
+                  <span>Terrain</span>
                 </div>
               </div>
             </div>
           )}
         </div>
         
-        <div style={{ position: "relative" }} onMouseLeave={() => setShowSatelliteMenu(false)}>
+        {/* Satellite Button & Dropdown */}
+        <div 
+          style={{ position: "relative", width: 110 }} 
+          onMouseLeave={() => setShowSatelliteMenu(false)}
+        >
           <button 
+            type="button"
             onMouseEnter={() => setShowSatelliteMenu(true)}
             onClick={() => setMapTypeId(mapTypeId === "satellite" ? "satellite" : "hybrid")} 
             style={{ 
-              padding: "6px 14px", 
-              background: (mapTypeId === "hybrid" || mapTypeId === "satellite") ? "rgba(255,255,255,0.1)" : "transparent", 
-              color: (mapTypeId === "hybrid" || mapTypeId === "satellite") ? "#ffffff" : "var(--text-muted)", 
+              width: "100%",
+              padding: "7px 12px", 
+              background: (mapTypeId === "hybrid" || mapTypeId === "satellite") ? "rgba(255, 255, 255, 0.14)" : "transparent", 
+              color: (mapTypeId === "hybrid" || mapTypeId === "satellite") ? "#ffffff" : "#94a3b8", 
               border: "none", 
-              borderRadius: "var(--radius-sm)",
+              borderRadius: "var(--radius-sm, 6px)",
               cursor: "pointer", 
-              fontWeight: 500, 
+              fontWeight: (mapTypeId === "hybrid" || mapTypeId === "satellite") ? 600 : 500, 
               fontSize: "0.85rem", 
-              transition: "all 0.2s",
+              transition: "all 0.2s ease",
               display: "flex",
               alignItems: "center",
-              gap: 4 
+              justifyContent: "space-between",
+              boxSizing: "border-box"
             }}
           >
-            Satellite <span style={{ fontSize: "0.6rem", opacity: 0.7 }}>▼</span>
+            <span>Satellite</span>
+            <ChevronDown size={13} style={{ opacity: 0.75, transition: "transform 0.2s ease", transform: showSatelliteMenu ? "rotate(180deg)" : "none" }} />
           </button>
 
           {showSatelliteMenu && (
-            <div style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              paddingTop: 8,
-              zIndex: 20
-            }}>
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                width: "100%",
+                paddingTop: 6,
+                zIndex: 20
+              }}
+            >
               <div style={{
-                background: "rgba(15, 23, 42, 0.9)",
+                width: "100%",
+                boxSizing: "border-box",
+                background: "rgba(15, 23, 42, 0.95)",
                 backdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.05)",
-                borderRadius: "var(--radius-md)",
-                padding: "10px 14px",
-                minWidth: "120px",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+                WebkitBackdropFilter: "blur(12px)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: "var(--radius-md, 8px)",
+                padding: "8px 10px",
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)"
               }}>
                 <div 
                   onClick={() => setMapTypeId(mapTypeId === "hybrid" ? "satellite" : "hybrid")}
-                  style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.875rem", cursor: "pointer", color: "#e2e8f0" }}
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: 8, 
+                    fontSize: "0.85rem", 
+                    cursor: "pointer", 
+                    color: "#f1f5f9",
+                    userSelect: "none"
+                  }}
                 >
                   <div style={{ 
-                    width: 18, 
-                    height: 18, 
-                    borderRadius: 4, 
-                    border: mapTypeId === "hybrid" ? "none" : "1px solid rgba(255,255,255,0.3)",
-                    background: mapTypeId === "hybrid" ? "var(--primary)" : "transparent",
+                    width: 16, 
+                    height: 16, 
+                    borderRadius: 3, 
+                    border: mapTypeId === "hybrid" ? "none" : "1px solid rgba(255, 255, 255, 0.35)",
+                    background: mapTypeId === "hybrid" ? "var(--primary, #3b82f6)" : "transparent",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    transition: "all 0.2s"
+                    flexShrink: 0,
+                    transition: "all 0.15s ease"
                   }}>
-                    {mapTypeId === "hybrid" && <Check size={14} color="#0f172a" strokeWidth={3} />}
+                    {mapTypeId === "hybrid" && <Check size={12} color="#ffffff" strokeWidth={3} />}
                   </div>
-                  Labels
+                  <span>Labels</span>
                 </div>
               </div>
             </div>
           )}
         </div>
+      </div>
+
+      {/* Top-Right: Locate Bolonsiri Floating Action Button */}
+      <div style={{
+        position: "absolute",
+        top: 20,
+        right: 20,
+        zIndex: 10
+      }}>
+        <button
+          type="button"
+          onClick={() => {
+            if (map) {
+              map.panTo(center);
+              map.setZoom(19);
+            }
+          }}
+          title="Center on Bolonsiri Public Cemetery"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "8px 16px",
+            background: "rgba(15, 23, 42, 0.82)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            color: "var(--primary-light, #60a5fa)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            borderRadius: "var(--radius-md, 10px)",
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: "0.85rem",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.35)",
+            transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(30, 41, 59, 0.95)";
+            e.currentTarget.style.borderColor = "rgba(96, 165, 250, 0.4)";
+            e.currentTarget.style.transform = "translateY(-1px)";
+            e.currentTarget.style.boxShadow = "0 6px 24px rgba(0, 0, 0, 0.45)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(15, 23, 42, 0.82)";
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)";
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "0 4px 20px rgba(0, 0, 0, 0.35)";
+          }}
+        >
+          <Compass size={15} />
+          <span>Locate Bolonsiri</span>
+        </button>
       </div>
 
       <GoogleMap
@@ -319,11 +431,14 @@ export default function CemeteryMap({
             position={position}
             icon={circleSymbol(color, isSelected)}
             onClick={() => {
-              setInfoPlot(plot);
-              if (typeof onSelectPlot === "function") onSelectPlot(plot);
+              if (typeof onSelectPlot === "function") {
+                onSelectPlot(plot);
+              } else {
+                setInfoPlot(plot);
+              }
             }}
           >
-            {infoPlot?.id === plot.id && (
+            {!onSelectPlot && infoPlot?.id === plot.id && (
               <InfoWindowF position={position} onCloseClick={() => setInfoPlot(null)}>
                 <div style={{ padding: "2px 4px" }}>
                   <strong style={{ display: "block", marginBottom: 4, fontSize: 14 }}>

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsClient } from "@/lib/use-is-client";
+import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 const STAFF_NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -106,6 +107,8 @@ export default function DashboardHeader() {
   const [showNotif, setShowNotif] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notifLoading, setNotifLoading] = useState(false);
+
+  useBodyScrollLock(showSearch || showNotif);
 
   const role = session?.user?.role || "Client";
   const userName = session?.user?.name || "User";

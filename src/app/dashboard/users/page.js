@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { Users, Search, Pencil, UserCheck, UserX, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 
 const ROLE_BADGE = { Admin: "badge-primary", Staff: "badge-warning", Client: "badge-muted" };
 const ROLE_TO_TYPE_ID = { Admin: "1", Staff: "2", Client: "3" };
@@ -21,6 +22,7 @@ export default function UsersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
   const [showModal, setShowModal] = useState(false);
+  useBodyScrollLock(showModal);
   const [editingUser, setEditingUser] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -422,7 +424,7 @@ export default function UsersPage() {
                   </p>
                 )}
               </div>
-              <div className="flex gap-sm" style={{ marginTop: "var(--space-xl)" }}>
+              <div className="flex gap-sm" style={{ marginTop: "0.75rem" }}>
                 <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowModal(false)}>
                   Cancel
                 </button>

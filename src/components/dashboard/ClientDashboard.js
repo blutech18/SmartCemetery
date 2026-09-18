@@ -73,9 +73,9 @@ export function ClientDashboard({ userName }) {
         description="Search burial records, locate graves on map, and manage requests."
         actions={
           <>
-            <Button variant="secondary" href="/dashboard/map">
-              <Map size={16} />
-              Interactive Map
+            <Button variant="secondary" href="/dashboard/map?locate=bolonsiri">
+              <Compass size={16} />
+              Locate Bolonsiri Map
             </Button>
             <Button variant="primary" href="/dashboard/search">
               <Search size={16} />
@@ -84,6 +84,52 @@ export function ClientDashboard({ userName }) {
           </>
         }
       />
+
+      {/* Locate Bolonsiri Banner for New Logins */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)",
+          border: "1px solid rgba(59, 130, 246, 0.25)",
+          borderRadius: "var(--radius-lg)",
+          padding: "1.25rem 1.5rem",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+          flexWrap: "wrap",
+          marginBottom: "var(--space-lg)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.25)"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: "var(--radius-md)",
+              background: "var(--primary-glow, rgba(59, 130, 246, 0.15))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--primary-light, #60a5fa)",
+              flexShrink: 0
+            }}
+          >
+            <Compass size={22} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)" }}>
+              Locate Bolonsiri Cemetery on Interactive Map
+            </div>
+            <div style={{ fontSize: "0.825rem", color: "var(--text-secondary)" }}>
+              Explore satellite views of cemetery grounds, search plots, and get pedestrian walking directions.
+            </div>
+          </div>
+        </div>
+        <Button variant="primary" href="/dashboard/map?locate=bolonsiri" style={{ whiteSpace: "nowrap" }}>
+          <Compass size={16} /> Locate Bolonsiri
+        </Button>
+      </div>
 
       {/* Hero Quick Search Box for Visitors */}
       <div className="staff-card mb-lg" style={{ background: "var(--theme-card-bg)", border: "1px solid var(--border-default)" }}>

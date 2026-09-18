@@ -11,7 +11,9 @@ export function buildOccupancyByLocation(plots, limit = 6) {
 
   const groups = new Map();
   for (const plot of plots) {
-    const name = plot?.locationDetail?.location?.name || "Unassigned";
+    const locName = plot?.locationDetail?.location?.name;
+    const subName = plot?.locationDetail?.subsection;
+    const name = locName || (subName ? `Section ${subName}` : "Unassigned");
     const entry = groups.get(name) || { name, occupied: 0, available: 0 };
     if (plot.status === "occupied") entry.occupied += 1;
     else if (plot.status === "available") entry.available += 1;

@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { MapPin, Map, Navigation, Pencil, Power, PowerOff } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 
 export default function LocationsPage() {
   const { data: session, status: sessionStatus } = useSession();
@@ -15,6 +16,7 @@ export default function LocationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
+  useBodyScrollLock(showModal);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     name: "",
@@ -314,7 +316,7 @@ export default function LocationsPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-sm" style={{ marginTop: "var(--space-xl)" }}>
+              <div className="flex gap-sm" style={{ marginTop: "0.75rem" }}>
                 <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowModal(false)}>
                   Cancel
                 </button>

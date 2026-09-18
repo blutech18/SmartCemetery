@@ -1036,43 +1036,106 @@ html[data-role="client"] .menu-toggle {
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
 
-/* ── Modal ─────────────────────────────────────────────────── */
+/* ── Modal & Scroll Lock ───────────────────────────────────── */
+/* Completely prevent outside background scrolling & hide outside scrollbars when any modal is open */
+html:has(.modal-overlay),
+html:has(.modal),
+html:has(.confirm-overlay),
+html:has(.hf-overlay),
+body:has(.modal-overlay),
+body:has(.modal),
+body:has(.confirm-overlay),
+body:has(.hf-overlay),
+html.modal-open,
+body.modal-open,
+html.modal-open .main-content,
+body.modal-open .main-content {
+  overflow: hidden !important;
+}
+
+@keyframes modalOverlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: var(--theme-overlay, rgba(2, 6, 23, 0.65));
+  background: rgba(2, 6, 23, 0.72);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  animation: fadeIn var(--transition-fast) ease-out;
+  padding: 1rem;
+  animation: modalOverlayFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 
 .modal {
-  background: var(--theme-shell-bg, #0f172a);
-  border: 1px solid var(--theme-divider, rgba(255, 255, 255, 0.1));
-  border-radius: var(--radius-lg, 12px);
-  padding: var(--space-xl);
+  background: #0f172a;
+  background-color: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg, 14px);
+  padding: 1.25rem 1.5rem;
   width: 90%;
-  max-width: 560px;
-  max-height: 85vh;
+  max-width: 500px;
+  max-height: 92vh;
   overflow-y: auto;
-  animation: slideUp var(--transition-fast) ease-out;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  animation: modalSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
   z-index: 10001;
+  will-change: transform, opacity;
+}
+
+[data-theme="light"] .modal {
+  background: #ffffff;
+  background-color: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  box-shadow: 0 25px 60px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+.modal .card {
+  background: #1e293b;
+  background-color: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: none;
+}
+
+[data-theme="light"] .modal .card {
+  background: #f8fafc;
+  background-color: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-lg);
+  margin-bottom: 0.85rem;
 }
 
 .modal-title {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 700;
 }
 
@@ -1080,11 +1143,12 @@ html[data-role="client"] .menu-toggle {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   cursor: pointer;
-  padding: var(--space-xs);
+  padding: 0.25rem;
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
+  line-height: 1;
 }
 
 .modal-close:hover {
@@ -1095,16 +1159,47 @@ html[data-role="client"] .menu-toggle {
 .modal-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: 0.65rem;
 }
 
 .modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-sm);
-  margin-top: var(--space-lg);
-  padding-top: var(--space-lg);
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
   border-top: 1px solid var(--border-default);
+}
+
+/* ── Modal compact form controls to avoid scrollbars ────────── */
+.modal .form-group {
+  gap: 3px;
+}
+
+.modal .form-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0;
+  letter-spacing: 0.04em;
+}
+
+.modal .form-input,
+.modal .form-select {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  height: 38px;
+}
+
+.modal .form-textarea {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  min-height: 52px;
+  height: 58px;
+  resize: vertical;
+}
+
+.modal .grid {
+  gap: 0.65rem;
 }
 
 /* ── Empty State ───────────────────────────────────────────── */

@@ -99,6 +99,30 @@ function LoginForm() {
           <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#fff', marginBottom: '0.5rem', letterSpacing: '-0.01em' }}>Welcome Back</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '2rem' }}>Sign in to access your secure dashboard</p>
 
+          {error && (
+            <div
+              id="login-credentials-error"
+              role="alert"
+              aria-live="assertive"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '1.5rem',
+                padding: '0.875rem 1rem',
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: '#f87171',
+                borderRadius: '10px',
+                fontSize: '0.9rem',
+                lineHeight: '1.4',
+              }}
+            >
+              <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div>
               <label className="form-label" htmlFor="login-email">Email Address</label>

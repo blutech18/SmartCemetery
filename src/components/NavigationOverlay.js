@@ -39,6 +39,7 @@ import {
 export default function NavigationOverlay({
   destination,
   onRouteChange,
+  onViewOnMap,
   plotId,
   channel = "public",
   authenticated = false,
@@ -174,10 +175,27 @@ export default function NavigationOverlay({
   const hasError = status === "error" || status === "denied";
 
   return (
-    <div className="card" style={{ marginTop: "var(--space-md)" }}>
-      <div className="flex items-center gap-xs" style={{ marginBottom: 12 }}>
-        <Navigation size={16} />
-        <h4 style={{ margin: 0 }}>Directions</h4>
+    <div style={{
+      background: "rgba(255, 255, 255, 0.03)",
+      border: "1px solid rgba(255, 255, 255, 0.08)",
+      borderRadius: "var(--radius-md)",
+      padding: "0.85rem 1rem",
+    }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <div className="flex items-center gap-xs">
+          <Navigation size={15} style={{ color: "var(--primary-light)" }} />
+          <h4 style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Directions</h4>
+        </div>
+        {origin && status === "ready" && onViewOnMap && (
+          <button
+            type="button"
+            className="btn btn-primary btn-xs"
+            onClick={onViewOnMap}
+            style={{ fontSize: "0.75rem", padding: "3px 10px", height: "auto" }}
+          >
+            View on Map →
+          </button>
+        )}
       </div>
 
       {!destinationValid ? (
@@ -186,25 +204,25 @@ export default function NavigationOverlay({
         <div
           role="status"
           className="flex items-center gap-xs text-sm"
-          style={{ color: "var(--color-danger, #c0392b)" }}
+          style={{ color: "var(--danger, #ef4444)" }}
         >
-          <AlertTriangle size={16} />
+          <AlertTriangle size={15} />
           <span>Directions unavailable — this plot has no GPS coordinates.</span>
         </div>
       ) : (
         <>
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary btn-sm flex items-center justify-center gap-xs"
             onClick={requestGeolocation}
             disabled={isBusy}
             aria-busy={isBusy}
             style={{ width: "100%" }}
           >
             {isBusy ? (
-              <Loader2 size={16} className="spin" aria-hidden="true" />
+              <Loader2 size={15} className="spin" aria-hidden="true" />
             ) : (
-              <LocateFixed size={16} aria-hidden="true" />
+              <LocateFixed size={15} aria-hidden="true" />
             )}
             {status === "ready" ? "Recalculate from my location" : "Use my location"}
           </button>
@@ -215,9 +233,10 @@ export default function NavigationOverlay({
               className="text-sm"
               style={{
                 marginTop: 8,
+                marginBottom: 0,
                 color: hasError
-                  ? "var(--color-danger, #c0392b)"
-                  : "var(--text-muted, #666)",
+                  ? "var(--danger, #ef4444)"
+                  : "var(--text-muted, #94a3b8)",
               }}
             >
               {message}
@@ -225,18 +244,40 @@ export default function NavigationOverlay({
           )}
 
           {origin && status === "ready" && (
-            <p className="text-sm" style={{ marginTop: 8, color: "var(--text-muted, #666)" }}>
-              Route from your location to the selected plot.
-            </p>
+            <div style={{ marginTop: 8 }}>
+              <p className="text-sm" style={{ margin: "0 0 6px 0", color: "var(--accent-light, #34d399)", fontWeight: 500 }}>
+                ✓ Route calculated from your location
+              </p>
+              {onViewOnMap && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm flex items-center justify-center gap-xs"
+                  onClick={onViewOnMap}
+                  style={{ width: "100%", marginTop: 4 }}
+                >
+                  <Navigation size={14} /> View Route on Map
+                </button>
+              )}
+            </div>
           )}
 
           {steps.length > 0 && (
             <ol
               aria-label="Step-by-step directions"
-              style={{ marginTop: 12, paddingLeft: 20, display: "grid", gap: 6 }}
+              style={{
+                marginTop: 10,
+                paddingLeft: 18,
+                display: "grid",
+                gap: 5,
+                maxHeight: 140,
+                overflowY: "auto",
+                borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+                paddingTop: 8,
+                marginBottom: 0
+              }}
             >
               {steps.map((s) => (
-                <li key={s.step} className="text-sm">
+                <li key={s.step} className="text-xs text-muted" style={{ lineHeight: 1.4 }}>
                   {s.instruction}
                 </li>
               ))}

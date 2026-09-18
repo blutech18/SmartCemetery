@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Pencil, Check, MapPinOff, AlertTriangle, X, Crosshair } from "lucide-react";
+import { Plus, Pencil, Check, MapPinOff, AlertTriangle, X, Crosshair, Compass, MapPin } from "lucide-react";
 import NavigationOverlay from "../../../components/NavigationOverlay";
+import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
+import { getClientMapCenter } from "../../../lib/config";
 
 const CemeteryMap = dynamic(() => import("../../../components/CemeteryMap"), {
   ssr: false,
@@ -21,19 +23,20 @@ function hasGps(p) {
 }
 
 // Simple centered modal wrapper.
-function Modal({ title, onClose, children, footer }) {
+function Modal({ title, onClose, children, footer, maxWidth = 480 }) {
+  useBodyScrollLock(true);
   return (
     <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
+      className="modal-overlay"
       onClick={onClose}
     >
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, width: "100%" }}>
-        <div className="flex justify-between items-center" style={{ marginBottom: "var(--space-md)" }}>
-          <h3 style={{ margin: 0 }}>{title}</h3>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth, width: "100%" }}>
+        <div className="flex justify-between items-center" style={{ marginBottom: "0.85rem" }}>
+          {typeof title === "string" ? <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700 }}>{title}</h3> : title}
           <button className="modal-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </div>
         {children}
-        {footer && <div className="flex gap-sm w-full" style={{ marginTop: "var(--space-lg)" }}>{footer}</div>}
+        {footer && <div className="flex gap-sm w-full" style={{ marginTop: "0.75rem" }}>{footer}</div>}
       </div>
     </div>
   );
@@ -160,6 +163,30 @@ function MapPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, plots, isAdmin]);
 
+  const [bolonsiriFocus, setBolonsiriFocus] = useState(null);
+
+  const handleLocateBolonsiri = useCallback(() => {
+    const c = getClientMapCenter();
+    setBolonsiriFocus({ lat: c.lat, lng: c.lng, key: Date.now() });
+    setToast("Centered on Bolonsiri Public Cemetery");
+    setTimeout(() => {
+      document.getElementById("cemetery-map-container")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  }, []);
+
+  // Deep-link: /dashboard/map?locate=bolonsiri
+  useEffect(() => {
+    if (searchParams.get("locate") !== "bolonsiri") return undefined;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      handleLocateBolonsiri();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, handleLocateBolonsiri]);
+
   function resetModes() {
     setPending(null);
     setDraftCoords(null);
@@ -223,8 +250,9 @@ function MapPageInner() {
       return sectionPoint(ldId);
     }
     if (detailsPlot && hasGps(detailsPlot)) return { lat: Number(detailsPlot.gpsLat), lng: Number(detailsPlot.gpsLng) };
+    if (bolonsiriFocus) return { lat: bolonsiriFocus.lat, lng: bolonsiriFocus.lng };
     return null;
-  }, [pending, detailsPlot, sectionPoint]);
+  }, [pending, detailsPlot, bolonsiriFocus, sectionPoint]);
 
   function handleMapClick(lat, lng) {
     if (!pending) return;
@@ -317,27 +345,38 @@ function MapPageInner() {
           </p>
         </div>
 
-        {/* Toolbar (Admin) */}
-        {isAdmin && (
-          <div className="flex items-center gap-sm" style={{ flexWrap: "wrap" }}>
-            {unpinned.length > 0 && !pending && !editing && (
-              <button className="btn btn-ghost btn-sm flex items-center gap-xs" onClick={() => setUnplacedOpen(true)}>
-                <MapPinOff size={16} /> Unplaced ({unpinned.length})
+        {/* Toolbar */}
+        <div className="flex items-center gap-sm" style={{ flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn btn-secondary flex items-center gap-xs"
+            onClick={handleLocateBolonsiri}
+            title="Recenter map on Bolonsiri Public Cemetery"
+          >
+            <Compass size={16} /> Locate Bolonsiri
+          </button>
+
+          {isAdmin && (
+            <>
+              {unpinned.length > 0 && !pending && !editing && (
+                <button className="btn btn-ghost btn-sm flex items-center gap-xs" onClick={() => setUnplacedOpen(true)}>
+                  <MapPinOff size={16} /> Unplaced ({unpinned.length})
+                </button>
+              )}
+              <button className="btn btn-primary flex items-center gap-xs" onClick={openAdd} disabled={editing || !!pending}>
+                <Plus size={18} /> Add Plot
               </button>
-            )}
-            <button className="btn btn-primary flex items-center gap-xs" onClick={openAdd} disabled={editing || !!pending}>
-              <Plus size={18} /> Add Plot
-            </button>
-            <button
-              className={`btn ${editing ? "" : "btn-ghost"} flex items-center gap-xs`}
-              onClick={toggleEditing}
-              disabled={!!pending}
-              style={editing ? { background: "var(--success, #2ECC71)", color: "#fff" } : undefined}
-            >
-              {editing ? <><Check size={18} /> Done Editing</> : <><Pencil size={16} /> Edit Locations</>}
-            </button>
-          </div>
-        )}
+              <button
+                className={`btn ${editing ? "" : "btn-ghost"} flex items-center gap-xs`}
+                onClick={toggleEditing}
+                disabled={!!pending}
+                style={editing ? { background: "var(--success, #2ECC71)", color: "#fff" } : undefined}
+              >
+                {editing ? <><Check size={18} /> Done Editing</> : <><Pencil size={16} /> Edit Locations</>}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Mode banners */}
@@ -383,6 +422,47 @@ function MapPageInner() {
           editable={editing}
           onPlotDragEnd={handlePlotDragEnd}
         />
+
+        {/* Active Route Indicator */}
+        {routeCoords && routeCoords.length > 1 && (
+          <div
+            style={{
+              position: "absolute",
+              top: "20px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 450,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              background: "#0f172a",
+              border: "1px solid rgba(59, 130, 246, 0.4)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+              padding: "7px 14px",
+              borderRadius: "var(--radius-full)",
+              animation: "fadeSlideIn 0.2s ease-out"
+            }}
+          >
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#3B82F6" }} />
+            <span style={{ fontSize: "0.825rem", fontWeight: 600, color: "#ffffff", whiteSpace: "nowrap" }}>
+              Active Navigation Route
+            </span>
+            <button
+              className="btn btn-ghost btn-xs"
+              onClick={() => setRouteCoords(null)}
+              style={{
+                padding: "2px 8px",
+                fontSize: "0.75rem",
+                color: "var(--text-muted)",
+                height: "auto",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: "var(--radius-sm)"
+              }}
+            >
+              Clear Route
+            </button>
+          </div>
+        )}
 
         {/* Legend Overlay */}
         <div
@@ -506,49 +586,116 @@ function MapPageInner() {
 
       {/* Plot Details modal (view mode, on marker click) */}
       {detailsPlot && !pending && !editing && (
-        <Modal title="Plot Details" onClose={() => { setDetailsPlot(null); setRouteCoords(null); }}>
+        <Modal
+          title={
+            <div className="flex items-center gap-sm">
+              <span style={{ fontSize: "1.15rem", fontWeight: 700 }}>Plot {detailsPlot.plotNumber}</span>
+              <span
+                className={`badge ${
+                  detailsPlot.status === "available"
+                    ? "badge-success"
+                    : detailsPlot.status === "occupied"
+                    ? "badge-danger"
+                    : detailsPlot.status === "reserved"
+                    ? "badge-warning"
+                    : "badge-info"
+                }`}
+                style={{ textTransform: "uppercase", fontSize: "0.68rem", fontWeight: 700, padding: "2px 8px" }}
+              >
+                {detailsPlot.status}
+              </span>
+            </div>
+          }
+          onClose={() => setDetailsPlot(null)}
+        >
           <div className="flex flex-col gap-sm">
-            <div><div className="form-label">Plot Number</div><div style={{ fontWeight: 600 }}>{detailsPlot.plotNumber}</div></div>
-            <div><div className="form-label">Location</div><div>{detailsPlot.locationDetail?.location?.name || "—"}</div></div>
-            <div><div className="form-label">Section</div><div>{detailsPlot.locationDetail?.subsection || "—"}</div></div>
-            <div>
-              <div className="form-label">Status</div>
-              <span className={`badge ${
-                detailsPlot.status === "available" ? "badge-success"
-                  : detailsPlot.status === "occupied" ? "badge-danger"
-                  : detailsPlot.status === "reserved" ? "badge-warning" : "badge-info"
-              }`}>{detailsPlot.status}</span>
-            </div>
-            <div>
-              <div className="form-label">GPS Coordinates</div>
-              <div className="text-sm" style={{ fontFamily: "var(--font-mono)" }}>
-                {hasGps(detailsPlot) ? `${Number(detailsPlot.gpsLat).toFixed(6)}, ${Number(detailsPlot.gpsLng).toFixed(6)}` : "Not set"}
-              </div>
-            </div>
-            {detailsPlot.graves?.length > 0 && (
+            {/* Location & Section 2-col info */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.07)",
+                borderRadius: "var(--radius-md)",
+                padding: "0.65rem 0.85rem",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "0.65rem",
+              }}
+            >
               <div>
-                <div className="form-label">Occupant(s)</div>
-                {detailsPlot.graves.map((g) => (<div key={g.id} className="text-sm">{g.deceasedName}</div>))}
+                <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
+                  Location
+                </div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-primary)" }}>
+                  {detailsPlot.locationDetail?.location?.name || "—"}
+                </div>
               </div>
-            )}
-          </div>
-
-          {isAdmin && (
-            <div style={{ marginTop: "var(--space-md)" }}>
-              <button className="btn btn-primary btn-sm flex items-center gap-xs" onClick={() => startPlacing(detailsPlot)}>
-                <Crosshair size={15} /> {hasGps(detailsPlot) ? "Edit location" : "Set location"}
-              </button>
+              <div>
+                <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
+                  Section
+                </div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-primary)" }}>
+                  {detailsPlot.locationDetail?.subsection || "—"}
+                </div>
+              </div>
             </div>
-          )}
 
-          <NavigationOverlay
-            key={detailsPlot.id}
-            destination={detailsDestination}
-            onRouteChange={setRouteCoords}
-            plotId={detailsPlot.id}
-            channel="dashboard"
-            authenticated={Boolean(session?.user)}
-          />
+            {/* GPS & Deceased Record */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.07)",
+                borderRadius: "var(--radius-md)",
+                padding: "0.65rem 0.85rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  GPS Coordinates
+                </span>
+                <span style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
+                  {hasGps(detailsPlot) ? `${Number(detailsPlot.gpsLat).toFixed(6)}, ${Number(detailsPlot.gpsLng).toFixed(6)}` : "Not set"}
+                </span>
+              </div>
+
+              {detailsPlot.graves?.length > 0 && (
+                <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)", paddingTop: "0.45rem" }}>
+                  <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
+                    Deceased Record
+                  </div>
+                  {detailsPlot.graves.map((g) => (
+                    <div key={g.id} style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                      {g.deceasedName}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Admin Relocate Pin Action */}
+            {isAdmin && (
+              <button
+                className="btn btn-ghost btn-sm flex items-center justify-center gap-xs"
+                onClick={() => startPlacing(detailsPlot)}
+                style={{ width: "100%", border: "1px solid rgba(255, 255, 255, 0.1)" }}
+              >
+                <Crosshair size={14} /> {hasGps(detailsPlot) ? "Relocate Pin on Map" : "Set GPS Location"}
+              </button>
+            )}
+
+            {/* Directions & Routing */}
+            <NavigationOverlay
+              key={detailsPlot.id}
+              destination={detailsDestination}
+              onRouteChange={setRouteCoords}
+              onViewOnMap={() => setDetailsPlot(null)}
+              plotId={detailsPlot.id}
+              channel="dashboard"
+              authenticated={Boolean(session?.user)}
+            />
+          </div>
         </Modal>
       )}
     </div>

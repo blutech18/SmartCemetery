@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 import { useIsClient } from "../../lib/use-is-client";
+import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
 
 /**
  * Accessible confirmation dialog replacing browser `confirm()`.
@@ -28,12 +29,12 @@ export function ConfirmDialog({
   const confirmRef = useRef(null);
   const mounted = useIsClient();
 
+  useBodyScrollLock(open);
+
   useEffect(() => {
     if (!open) return undefined;
 
     const previouslyFocused = document.activeElement;
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
     confirmRef.current?.focus();
 
     const onKeyDown = (event) => {
@@ -63,7 +64,6 @@ export function ConfirmDialog({
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = overflow;
       if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
     };
   }, [open, busy, onCancel]);
