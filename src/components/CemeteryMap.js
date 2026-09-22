@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleMap, MarkerF, PolylineF, InfoWindowF, useJsApiLoader } from "@react-google-maps/api";
-import { Check, Compass, ChevronDown } from "lucide-react";
+import { Check, Compass, ChevronDown, AlertTriangle } from "lucide-react";
 import { getClientMapCenter, getClientGoogleMapsApiKey } from "../lib/config";
 
 function statusColor(status) {
@@ -54,7 +54,8 @@ function draftSymbol() {
   };
 }
 
-export default function CemeteryMap({
+function GoogleMapLoadedView({
+  apiKey,
   plots,
   selectedPlot,
   onSelectPlot,
@@ -72,7 +73,7 @@ export default function CemeteryMap({
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: "cemetery-google-maps",
-    googleMapsApiKey: getClientGoogleMapsApiKey(),
+    googleMapsApiKey: apiKey,
   });
 
   const [map, setMap] = useState(null);
@@ -470,4 +471,60 @@ export default function CemeteryMap({
     </GoogleMap>
     </div>
   );
+}
+
+export default function CemeteryMap(props) {
+  const apiKey = getClientGoogleMapsApiKey();
+
+  if (!apiKey) {
+    return (
+      <div
+        style={{
+          ...WRAPPER_STYLE,
+          minHeight: 480,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--bg-card, #0f172a)",
+          color: "var(--text-main, #f8fafc)",
+          padding: "2rem",
+          textAlign: "center",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+        }}
+      >
+        <div
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: "50%",
+            background: "rgba(239, 68, 68, 0.12)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: "1rem",
+            color: "var(--danger, #ef4444)",
+          }}
+        >
+          <AlertTriangle size={26} />
+        </div>
+        <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1.15rem", fontWeight: 600 }}>
+          Google Maps API Key Missing
+        </h3>
+        <p
+          style={{
+            margin: "0 0 1rem 0",
+            color: "var(--text-muted, #94a3b8)",
+            maxWidth: 420,
+            fontSize: "0.875rem",
+            lineHeight: 1.5,
+          }}
+        >
+          The interactive map requires a valid Google Maps API key. Please configure <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> in your <code>.env.local</code> file and restart the development server.
+        </p>
+      </div>
+    );
+  }
+
+  return <GoogleMapLoadedView {...props} apiKey={apiKey} />;
 }
