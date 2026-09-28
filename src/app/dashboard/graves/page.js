@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { Search, Archive, Pencil, Trash2 } from "lucide-react";
+import { Search, Archive, Pencil, Trash2, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
+import { getGravePhoto } from "@/lib/plot-format";
 
 const EMPTY_FORM = {
   deceasedName: "",
@@ -15,6 +16,7 @@ const EMPTY_FORM = {
   contactPerson: "",
   contactPhone: "",
   notes: "",
+  photo: "",
 };
 
 export default function GravesPage() {
@@ -37,6 +39,9 @@ export default function GravesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [initialPhoto, setInitialPhoto] = useState("");
 
   const fetchGraves = useCallback(async () => {
     // Skip default fetch if we are actively viewing search results
@@ -97,39 +102,123 @@ export default function GravesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      let savedNotes = form.notes;
+      if (editingId) {
+        const existing = displayGraves.find((g) => g.id === editingId);
+        if (existing?.details?.notes) {
+          try {
+            const parsed = JSON.parse(existing.details.notes);
+            if (parsed && typeof parsed === "object") {
+              parsed.text = form.notes;
+              if (!photoFile && form.photo !== undefined) {
+                parsed.photo = form.photo || null;
+              }
+              savedNotes = JSON.stringify(parsed);
+            }
+          } catch {
+            // raw string notes
+          }
+        } else if (!photoFile && form.photo) {
+          savedNotes = JSON.stringify({
+            photo: form.photo,
+            text: form.notes || "",
+          });
+        }
+      } else if (!photoFile && form.photo) {
+        savedNotes = JSON.stringify({
+          photo: form.photo,
+          text: form.notes || "",
+        });
+      }
+
       const res = await fetch(editingId ? `/api/graves/${editingId}` : "/api/graves", {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
+          deceasedName: form.deceasedName,
           plotId: parseInt(form.plotId),
+          burialDate: form.burialDate || null,
+          causeOfDeath: form.causeOfDeath || null,
+          contactPerson: form.contactPerson || null,
+          contactPhone: form.contactPhone || null,
+          notes: savedNotes || null,
         }),
       });
 
-      if (res.ok) {
-        setShowModal(false);
-        setEditingId(null);
-        setForm(EMPTY_FORM);
-        await Promise.all([fetchGraves(), fetchPlots()]);
-        toast.success(editingId ? "Record updated" : "Record created");
-      } else {
+      if (!res.ok) {
         const err = await res.json();
         toast.error(err.error?.message || err.error || `Failed to ${editingId ? "update" : "create"} record`);
+        setSubmitting(false);
+        return;
       }
+
+      const resData = await res.json();
+      const targetGraveId = editingId || resData.grave?.id;
+
+      if (targetGraveId && photoFile) {
+        const formData = new FormData();
+        formData.append("file", photoFile);
+        try {
+          const photoRes = await fetch(`/api/graves/${targetGraveId}/photo`, {
+            method: "POST",
+            body: formData,
+          });
+          if (!photoRes.ok) {
+            const photoErr = await photoRes.json();
+            toast.error(photoErr.error || "Failed to upload photo file");
+          }
+        } catch {
+          toast.error("Failed to upload photo file");
+        }
+      } else if (targetGraveId && form.photo !== initialPhoto) {
+        try {
+          await fetch(`/api/graves/${targetGraveId}/photo`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ photoUrl: form.photo || "reset" }),
+          });
+        } catch {
+          // ignore
+        }
+      }
+
+      setShowModal(false);
+      setEditingId(null);
+      setForm(EMPTY_FORM);
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      await Promise.all([fetchGraves(), fetchPlots()]);
+      toast.success(editingId ? "Record updated" : "Record created");
     } catch {
       toast.error("An error occurred");
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }
 
   function openCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setInitialPhoto("");
+    setPhotoFile(null);
+    setPhotoPreview(null);
     setShowModal(true);
   }
 
   function openEdit(grave) {
     setEditingId(grave.id);
+    const photo = getGravePhoto(grave) || "";
+    let rawNotes = grave.details?.notes || "";
+    let textNotes = rawNotes;
+    try {
+      const parsed = JSON.parse(rawNotes);
+      if (parsed && typeof parsed === "object") {
+        if (parsed.text !== undefined) textNotes = parsed.text;
+      }
+    } catch {
+      // raw string notes
+    }
+
     setForm({
       deceasedName: grave.deceasedName || "",
       plotId: String(grave.plotId || ""),
@@ -137,8 +226,12 @@ export default function GravesPage() {
       causeOfDeath: grave.details?.causeOfDeath || "",
       contactPerson: grave.details?.contactPerson || "",
       contactPhone: grave.details?.contactPhone || "",
-      notes: grave.details?.notes || "",
+      notes: textNotes,
+      photo: photo,
     });
+    setInitialPhoto(photo);
+    setPhotoFile(null);
+    setPhotoPreview(photo || null);
     setShowModal(true);
   }
 
@@ -256,16 +349,51 @@ export default function GravesPage() {
               </tr>
             </thead>
             <tbody>
-              {displayGraves.map((grave) => (
-                <tr key={grave.id}>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{grave.deceasedName}</div>
-                    {grave.details?.contactPerson && (
-                      <div className="text-xs text-muted">
-                        Contact: {grave.details.contactPerson}
+              {displayGraves.map((grave) => {
+                const gravePhoto = getGravePhoto(grave);
+                return (
+                  <tr key={grave.id}>
+                    <td>
+                      <div className="flex items-center gap-sm">
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: "50%",
+                            overflow: "hidden",
+                            backgroundColor: "var(--bg-secondary, #f1f5f9)",
+                            border: "1px solid var(--border-color, #e2e8f0)",
+                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {gravePhoto ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={gravePhoto}
+                              alt={grave.deceasedName}
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.src = "/images/memorial_headstone.jpg";
+                              }}
+                            />
+                          ) : (
+                            <Camera size={16} className="text-muted" />
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{grave.deceasedName}</div>
+                          {grave.details?.contactPerson && (
+                            <div className="text-xs text-muted">
+                              Contact: {grave.details.contactPerson}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </td>
+                    </td>
                   <td>
                     {grave.burialDate
                       ? new Date(grave.burialDate).toLocaleDateString()
@@ -317,7 +445,8 @@ export default function GravesPage() {
                     </td>
                   )}
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
           
@@ -455,6 +584,101 @@ export default function GravesPage() {
                   />
                 </div>
               </div>
+              {/* Profile Photo */}
+              <div className="form-group">
+                <label className="form-label flex items-center justify-between">
+                  <span>Profile Photo</span>
+                  {(photoPreview || form.photo) && (
+                    <button
+                      type="button"
+                      className="text-xs text-danger"
+                      onClick={() => {
+                        setPhotoFile(null);
+                        setPhotoPreview(null);
+                        setForm((prev) => ({ ...prev, photo: "" }));
+                      }}
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                </label>
+                <div className="flex gap-md items-center" style={{ marginTop: "0.25rem" }}>
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: "var(--radius-md, 8px)",
+                      border: "1px solid var(--border-color, #e2e8f0)",
+                      backgroundColor: "var(--bg-secondary, #f8fafc)",
+                      overflow: "hidden",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {photoPreview ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={photoPreview}
+                        alt="Preview"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "/images/memorial_headstone.jpg";
+                        }}
+                      />
+                    ) : (
+                      <Camera size={22} className="text-muted" />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                    <div className="flex gap-sm items-center">
+                      <label
+                        className="btn btn-secondary btn-sm"
+                        style={{ cursor: "pointer", margin: 0, display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                      >
+                        <Camera size={14} />
+                        <span>Upload Photo</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            if (file.size > 5 * 1024 * 1024) {
+                              toast.error("Image file exceeds 5MB limit");
+                              return;
+                            }
+                            setPhotoFile(file);
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              setPhotoPreview(evt.target.result);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <span className="text-xs text-muted">or URL below</span>
+                    </div>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Photo URL (e.g. /images/..., https://...)"
+                      value={form.photo}
+                      onChange={(e) => {
+                        setPhotoFile(null);
+                        setForm({ ...form, photo: e.target.value });
+                        setPhotoPreview(e.target.value || null);
+                      }}
+                      style={{ fontSize: "0.85rem", padding: "0.35rem 0.65rem" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="form-group">
                 <label className="form-label">Notes</label>
                 <textarea

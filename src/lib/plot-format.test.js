@@ -6,6 +6,7 @@ import {
   extractPlotTiers,
   getPlotSummaryNames,
   statusMeta,
+  getGravePhoto,
 } from "./plot-format";
 
 describe("plot-format", () => {
@@ -97,5 +98,32 @@ describe("plot-format", () => {
     expect(statusMeta("available").label).toBe("Available");
     expect(statusMeta("hold").label).toBe("Hold / Reserved");
     expect(statusMeta("something-else").label).toBe("Unavailable");
+  });
+
+  it("extracts photos from grave records and tier stacks via getGravePhoto", () => {
+    expect(getGravePhoto(null)).toBeNull();
+    expect(getGravePhoto({})).toBeNull();
+    expect(getGravePhoto({ photo: "/images/custom.jpg" })).toBe("/images/custom.jpg");
+
+    // From JSON notes
+    expect(
+      getGravePhoto({
+        details: {
+          notes: JSON.stringify({ photo: "/uploads/graves/test.jpg" }),
+        },
+      })
+    ).toBe("/uploads/graves/test.jpg");
+
+    // From apartment niche stack
+    expect(
+      getGravePhoto({
+        details: {
+          notes: JSON.stringify({
+            type: "apartment_niche_stack",
+            tiers: [{ tier: 1, photo: "/uploads/graves/tier1.jpg" }],
+          }),
+        },
+      })
+    ).toBe("/uploads/graves/tier1.jpg");
   });
 });

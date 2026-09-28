@@ -72,7 +72,10 @@ export function extractPlotTiers(plot) {
     try {
       const parsed = JSON.parse(grave.details.notes);
       if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
-        return parsed.tiers;
+        return parsed.tiers.map((t) => ({
+          ...t,
+          photo: t.photo || parsed.photo || null,
+        }));
       }
     } catch {
       // not JSON, continue
@@ -123,6 +126,17 @@ export function extractPlotTiers(plot) {
   // 4. Single traditional plot.
   if (plot.graves?.length > 0) {
     const g = plot.graves[0];
+    let photo = g.photo || null;
+    let notesText = g.details?.notes;
+    if (notesText) {
+      try {
+        const parsed = JSON.parse(notesText);
+        if (parsed.photo) photo = parsed.photo;
+        if (parsed.text !== undefined) notesText = parsed.text;
+      } catch {
+        // plain text notes
+      }
+    }
     return [
       {
         tier: 1,
@@ -131,12 +145,38 @@ export function extractPlotTiers(plot) {
         burialDate: g.burialDate,
         causeOfDeath: g.details?.causeOfDeath,
         contactPerson: g.details?.contactPerson,
+        notes: notesText,
+        photo,
         status: plot.status || "occupied",
       },
     ];
   }
 
   return [{ tier: 1, label: "Ground Burial Lot", status: plot.status || "available" }];
+}
+
+/**
+ * Extract photo URL from a grave record if available.
+ * @param {object} grave
+ * @returns {string|null}
+ */
+export function getGravePhoto(grave) {
+  if (!grave) return null;
+  if (grave.photo) return grave.photo;
+  if (grave.details?.notes) {
+    try {
+      const parsed = JSON.parse(grave.details.notes);
+      if (parsed.photo) return parsed.photo;
+      if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
+        const withPhoto = parsed.tiers.find((t) => t.photo);
+        if (withPhoto?.photo) return withPhoto.photo;
+        if (parsed.photo) return parsed.photo;
+      }
+    } catch {
+      // not JSON
+    }
+  }
+  return null;
 }
 
 /** Canonical status -> presentation mapping. */

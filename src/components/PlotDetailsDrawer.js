@@ -22,13 +22,16 @@ import {
   Crosshair,
   ExternalLink,
   Search,
+  Camera,
 } from "lucide-react";
+import { toast } from "sonner";
 import NavigationOverlay from "./NavigationOverlay";
 import {
   getInitials,
   formatPlotDate,
   extractPlotTiers,
   getPlotSummaryNames,
+  getGravePhoto,
 } from "@/lib/plot-format";
 
 // Re-exported for backwards compatibility; the canonical definitions live in
@@ -38,6 +41,7 @@ export {
   extractPlotTiers,
   statusMeta,
   getPlotSummaryNames,
+  getGravePhoto,
 } from "@/lib/plot-format";
 
 export default function PlotDetailsDrawer({
@@ -50,6 +54,7 @@ export default function PlotDetailsDrawer({
   onSelectPlot,
   onRouteChange,
   onRelocatePlot,
+  onUpdatePlot,
   activeRoute = false,
   isAdmin = false,
   authenticated = false,
@@ -116,26 +121,130 @@ export default function PlotDetailsDrawer({
     return () => observer.disconnect();
   }, []);
 
+  const [localPlot, setLocalPlot] = useState(null);
+  const activePlot = localPlot && localPlot.id === plot?.id ? localPlot : plot;
+
+  // Photo modal state
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [photoModalTier, setPhotoModalTier] = useState(null);
+  const [photoModalApplyToAll, setPhotoModalApplyToAll] = useState(false);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoUrlInput, setPhotoUrlInput] = useState("");
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+
   // Extract tiers for current plot
   const tiers = useMemo(() => {
-    const list = extractPlotTiers(plot);
+    const list = extractPlotTiers(activePlot);
     // Sort from Top (Tier 4) to Bottom (Tier 1) for natural visual stack
     return [...list].sort((a, b) => b.tier - a.tier);
-  }, [plot]);
+  }, [activePlot]);
 
   // Reset the selected tier when a different plot is selected. Done in an
   // effect (never during render) and guarded by a ref so unrelated parent
   // re-renders — which produce a new `plot` object identity — do not clobber
   // the user's tier selection.
   useEffect(() => {
-    if (plot?.id === lastPlotIdRef.current) return;
-    lastPlotIdRef.current = plot?.id;
-    const list = extractPlotTiers(plot);
+    if (activePlot?.id === lastPlotIdRef.current) return;
+    lastPlotIdRef.current = activePlot?.id;
+    const list = extractPlotTiers(activePlot);
     const occupiedIdx = list.findIndex((t) => t.status === "occupied");
     setSelectedTierIndex(occupiedIdx !== -1 ? occupiedIdx : 0);
-  }, [plot]);
+  }, [activePlot]);
 
   const currentTier = tiers[selectedTierIndex] || tiers[0] || null;
+
+  const handleOpenPhotoModal = () => {
+    setPhotoModalTier(currentTier?.tier || 1);
+    setPhotoModalApplyToAll(false);
+    setPhotoFile(null);
+    const currentPhoto = currentTier?.photo || activePlot?.photo || "";
+    setPhotoUrlInput(currentPhoto);
+    setPhotoPreview(currentPhoto);
+    setPhotoError("");
+    setShowPhotoModal(true);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError("Image size must be less than 5MB");
+      return;
+    }
+    setPhotoError("");
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPhotoPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSavePhoto = async () => {
+    if (!activePlot) return;
+    setUploadingPhoto(true);
+    setPhotoError("");
+    try {
+      const graveId = activePlot.graves?.[0]?.id;
+      const endpoint = graveId
+        ? `/api/graves/${graveId}/photo`
+        : `/api/plots/${activePlot.id}/photo`;
+
+      let res;
+      if (photoFile) {
+        const fd = new FormData();
+        fd.append("file", photoFile);
+        if (photoModalTier != null) fd.append("tier", String(photoModalTier));
+        if (photoModalApplyToAll) fd.append("applyToAll", "true");
+        res = await fetch(endpoint, {
+          method: "POST",
+          body: fd,
+        });
+      } else {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            photoUrl: photoUrlInput,
+            tier: photoModalTier,
+            applyToAll: photoModalApplyToAll,
+          }),
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update photo");
+      }
+
+      // Update local plot state
+      const updatedPlot = JSON.parse(JSON.stringify(activePlot));
+      if (!updatedPlot.graves || updatedPlot.graves.length === 0) {
+        updatedPlot.graves = [{ id: data.graveId || 0, details: { notes: data.notes } }];
+      } else {
+        if (!updatedPlot.graves[0].details) updatedPlot.graves[0].details = {};
+        updatedPlot.graves[0].details.notes = data.notes;
+      }
+      if (photoModalApplyToAll) {
+        updatedPlot.photo = data.photoUrl;
+      }
+
+      setLocalPlot(updatedPlot);
+      if (typeof onUpdatePlot === "function") {
+        onUpdatePlot(updatedPlot);
+      }
+      setShowPhotoModal(false);
+      toast.success(data.message || "Photo updated successfully");
+    } catch (err) {
+      console.error(err);
+      setPhotoError(err.message || "Failed to save photo");
+      toast.error(err.message || "Failed to save photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const copyGpsToClipboard = () => {
     if (plot?.gpsLat == null || plot?.gpsLng == null) return;
@@ -335,7 +444,7 @@ export default function PlotDetailsDrawer({
             flexDirection: "column",
           }}
         >
-          {plot ? (
+          {activePlot ? (
             <>
               {/* Photo: Cemetery Memorial Headstone / Monument */}
               <div
@@ -350,7 +459,7 @@ export default function PlotDetailsDrawer({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={currentTier?.photo || plot?.photo || "/images/memorial_headstone.jpg"}
+                  src={currentTier?.photo || activePlot?.photo || "/images/memorial_headstone.jpg"}
                   alt={currentTier?.deceasedName || "Memorial plot"}
                   referrerPolicy="no-referrer"
                   onError={(e) => {
@@ -367,6 +476,40 @@ export default function PlotDetailsDrawer({
                     display: "block",
                   }}
                 />
+
+                {/* Admin/Staff Photo Change Button Overlay */}
+                {(isAdmin || authenticated) && (
+                  <button
+                    type="button"
+                    onClick={handleOpenPhotoModal}
+                    title="Change Grave / Crypt Photo"
+                    aria-label="Change Grave Photo"
+                    style={{
+                      position: "absolute",
+                      bottom: 10,
+                      right: 10,
+                      background: isLight ? "rgba(255, 255, 255, 0.92)" : "rgba(15, 23, 42, 0.88)",
+                      backdropFilter: "blur(8px)",
+                      WebkitBackdropFilter: "blur(8px)",
+                      color: isLight ? "#1e293b" : "#f8fafc",
+                      border: isLight ? "1px solid rgba(0, 0, 0, 0.15)" : "1px solid rgba(255, 255, 255, 0.25)",
+                      borderRadius: 20,
+                      padding: "5px 12px",
+                      fontSize: "0.72rem",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+                      transition: "all 0.15s ease",
+                      zIndex: 10,
+                    }}
+                  >
+                    <Camera size={13} style={{ color: isLight ? "#0284c7" : "#38bdf8" }} />
+                    <span>Change Photo</span>
+                  </button>
+                )}
               </div>
 
               {/* Multi-Grave / Plot Row Switcher Tabs */}
@@ -1038,6 +1181,307 @@ export default function PlotDetailsDrawer({
       >
         {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
+
+      {/* ─── Change Photo Modal ─── */}
+      {showPhotoModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.65)",
+            backdropFilter: "blur(5px)",
+            WebkitBackdropFilter: "blur(5px)",
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => !uploadingPhoto && setShowPhotoModal(false)}
+        >
+          <div
+            style={{
+              background: isLight ? "#ffffff" : "#0f172a",
+              color: isLight ? "#0f172a" : "#f8fafc",
+              border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 440,
+              width: "100%",
+              boxShadow: "0 20px 45px rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: isLight ? "#e0f2fe" : "rgba(56, 189, 248, 0.15)",
+                    color: isLight ? "#0284c7" : "#38bdf8",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Camera size={16} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700 }}>
+                    Change Profile Photo
+                  </h3>
+                  <p style={{ margin: 0, fontSize: "0.72rem", color: isLight ? "#64748b" : "#94a3b8" }}>
+                    {activePlot?.plotNumber} {currentTier?.label ? `• ${currentTier.label}` : ""}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPhotoModal(false)}
+                disabled={uploadingPhoto}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: isLight ? "#94a3b8" : "#64748b",
+                  padding: 4,
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Target Scope if multi-tier */}
+            {tiers.length > 1 && (
+              <div
+                style={{
+                  background: isLight ? "#f8fafc" : "rgba(255, 255, 255, 0.04)",
+                  border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.08)",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  fontSize: "0.75rem",
+                }}
+              >
+                <span style={{ fontWeight: 600, color: isLight ? "#475569" : "#cbd5e1" }}>
+                  Photo Assignment Scope:
+                </span>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="photoScope"
+                      checked={!photoModalApplyToAll}
+                      onChange={() => setPhotoModalApplyToAll(false)}
+                    />
+                    <span>This Tier ({currentTier?.label || `Tier ${photoModalTier}`})</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="photoScope"
+                      checked={photoModalApplyToAll}
+                      onChange={() => setPhotoModalApplyToAll(true)}
+                    />
+                    <span>All Tiers / Entire Crypt</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Preview Box */}
+            <div
+              style={{
+                width: "100%",
+                height: 160,
+                borderRadius: 8,
+                overflow: "hidden",
+                border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                background: isLight ? "#f1f5f9" : "#020617",
+                position: "relative",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoPreview || "/images/memorial_headstone.jpg"}
+                alt="Photo preview"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                onError={(e) => {
+                  e.currentTarget.src = "/images/memorial_headstone.jpg";
+                }}
+              />
+              {photoPreview && photoPreview !== "/images/memorial_headstone.jpg" && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    background: "rgba(0, 0, 0, 0.7)",
+                    color: "#ffffff",
+                    fontSize: "0.65rem",
+                    padding: "2px 8px",
+                    borderRadius: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Custom Photo Preview
+                </div>
+              )}
+            </div>
+
+            {/* File Upload Input */}
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.74rem",
+                  fontWeight: 600,
+                  color: isLight ? "#475569" : "#cbd5e1",
+                  marginBottom: 6,
+                }}
+              >
+                Upload from Device:
+              </label>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={handleFileChange}
+                disabled={uploadingPhoto}
+                style={{
+                  fontSize: "0.75rem",
+                  width: "100%",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                  background: isLight ? "#f8fafc" : "#1e293b",
+                  color: isLight ? "#1e293b" : "#f8fafc",
+                }}
+              />
+              <span style={{ fontSize: "0.67rem", color: isLight ? "#94a3b8" : "#64748b" }}>
+                Supports JPG, PNG, WebP up to 5MB
+              </span>
+            </div>
+
+            {/* Direct URL Input */}
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.74rem",
+                  fontWeight: 600,
+                  color: isLight ? "#475569" : "#cbd5e1",
+                  marginBottom: 6,
+                }}
+              >
+                Or Paste Image URL:
+              </label>
+              <input
+                type="text"
+                placeholder="https://example.com/photo.jpg or /images/..."
+                value={photoUrlInput}
+                onChange={(e) => {
+                  setPhotoFile(null);
+                  setPhotoUrlInput(e.target.value);
+                  setPhotoPreview(e.target.value);
+                }}
+                disabled={uploadingPhoto}
+                style={{
+                  fontSize: "0.78rem",
+                  width: "100%",
+                  padding: "7px 10px",
+                  borderRadius: 6,
+                  border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                  background: isLight ? "#f8fafc" : "#1e293b",
+                  color: isLight ? "#1e293b" : "#f8fafc",
+                }}
+              />
+            </div>
+
+            {photoError && (
+              <div style={{ color: "#ef4444", fontSize: "0.72rem", fontWeight: 600 }}>
+                {photoError}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoFile(null);
+                  setPhotoUrlInput("");
+                  setPhotoPreview("/images/memorial_headstone.jpg");
+                }}
+                disabled={uploadingPhoto}
+                style={{
+                  padding: "7px 12px",
+                  fontSize: "0.74rem",
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                  background: "transparent",
+                  color: isLight ? "#64748b" : "#94a3b8",
+                  cursor: "pointer",
+                }}
+              >
+                Reset Default
+              </button>
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                type="button"
+                onClick={() => setShowPhotoModal(false)}
+                disabled={uploadingPhoto}
+                style={{
+                  padding: "7px 14px",
+                  fontSize: "0.74rem",
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                  background: isLight ? "#f1f5f9" : "#1e293b",
+                  color: isLight ? "#1e293b" : "#f8fafc",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSavePhoto}
+                disabled={uploadingPhoto}
+                style={{
+                  padding: "7px 16px",
+                  fontSize: "0.74rem",
+                  fontWeight: 700,
+                  borderRadius: 6,
+                  border: "none",
+                  background: "#0284c7",
+                  color: "#ffffff",
+                  cursor: uploadingPhoto ? "default" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 2px 6px rgba(2, 132, 199, 0.4)",
+                  opacity: uploadingPhoto ? 0.7 : 1,
+                }}
+              >
+                <Check size={14} />
+                <span>{uploadingPhoto ? "Saving..." : "Save Photo"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

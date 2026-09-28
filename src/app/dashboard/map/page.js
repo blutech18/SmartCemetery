@@ -974,6 +974,10 @@ function MapPageInner() {
           }}
           onRouteChange={setRouteCoords}
           onRelocatePlot={(plot) => startPlacing(plot)}
+          onUpdatePlot={(updatedPlot) => {
+            setDetailsPlot(updatedPlot);
+            setPlots((prev) => prev.map((p) => (p.id === updatedPlot.id ? updatedPlot : p)));
+          }}
           activeRoute={Boolean(routeCoords && routeCoords.length > 1)}
           isAdmin={isAdmin}
           authenticated={Boolean(session?.user)}
