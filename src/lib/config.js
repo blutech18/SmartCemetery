@@ -10,7 +10,9 @@
 // values statically and feeds them into the pure `resolveMapCenter`, so the map
 // components never hardcode coordinates.
 
-// Documented default center: Bolonsori Public Cemetery (Main Field).
+// Documented default center: Bolonsori Public Cemetery (CMP Apartment Rows).
+// Must match the MAP_CENTER_LAT/LNG / NEXT_PUBLIC_MAP_CENTER_* values documented
+// in `.env.example` and asserted by config.property.test.js.
 export const DEFAULT_MAP_CENTER = { lat: 8.4647, lng: 124.6578 };
 
 // Public providers are development-only fallbacks. Production must configure

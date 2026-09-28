@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/authz";
 import {
@@ -13,6 +14,14 @@ import { getClientIp, writeAuditLog } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
+/** Constant-time string comparison to avoid leaking the secret by timing. */
+function timingSafeEqualString(a, b) {
+  const aBuf = Buffer.from(String(a));
+  const bBuf = Buffer.from(String(b));
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
 async function authorizeTrigger(request) {
   const auth = await requireRole(request, "archival");
   if (auth.ok) {
@@ -21,7 +30,7 @@ async function authorizeTrigger(request) {
 
   const expected = process.env.ARCHIVAL_CRON_SECRET;
   const provided = request.headers.get("x-archival-token");
-  if (expected && provided && provided === expected) {
+  if (expected && provided && timingSafeEqualString(provided, expected)) {
     const configuredId = Number.parseInt(process.env.ARCHIVAL_SYSTEM_USER_ID || "", 10);
     return {
       authorized: true,

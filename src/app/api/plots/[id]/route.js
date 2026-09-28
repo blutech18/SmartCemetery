@@ -24,6 +24,13 @@ export async function PUT(request, { params }) {
 
     // Next.js 16: dynamic route `params` is async and must be awaited.
     const { id } = await params;
+    const plotId = Number(id);
+    if (!Number.isInteger(plotId) || plotId <= 0) {
+      return validationErrorResponse([
+        { field: "id", code: "type", message: "id must be a positive integer" },
+      ]);
+    }
+
     const body = await request.json();
 
     // Uniform validation (Req 15.2, 15.4).
@@ -33,8 +40,21 @@ export async function PUT(request, { params }) {
     }
     const { locationDetailId, plotNumber, status, gpsLat, gpsLng } = validation.value;
 
+    // Preserve the occupancy invariant: a plot that holds grave records must
+    // not be moved to a non-occupied status (mirrors the atomic plot claim in
+    // POST /api/graves).
+    if (status !== undefined && status !== "occupied") {
+      const graveCount = await prisma.grave.count({ where: { plotId } });
+      if (graveCount > 0) {
+        return NextResponse.json(
+          { error: "This plot contains a grave record and must remain occupied" },
+          { status: 409 }
+        );
+      }
+    }
+
     const plot = await prisma.plot.update({
-      where: { id: parseInt(id) },
+      where: { id: plotId },
       data: {
         locationDetailId,
         plotNumber,
@@ -53,6 +73,9 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(plot);
   } catch (error) {
+    if (error?.code === "P2025") {
+      return NextResponse.json({ error: "Plot not found" }, { status: 404 });
+    }
     console.error("PUT /api/plots/[id] error:", error);
     return NextResponse.json({ error: "Failed to update plot" }, { status: 500 });
   }

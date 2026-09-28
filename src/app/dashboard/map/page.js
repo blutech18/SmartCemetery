@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Pencil, Check, MapPinOff, AlertTriangle, X, Crosshair, Compass, MapPin } from "lucide-react";
+import { Plus, Pencil, Check, MapPinOff, AlertTriangle, X, Crosshair, Compass, MapPin, Move, Maximize2, Minimize2 } from "lucide-react";
 import NavigationOverlay from "../../../components/NavigationOverlay";
+import PlotDetailsDrawer from "../../../components/PlotDetailsDrawer";
+import PlotPositionAdjuster from "../../../components/PlotPositionAdjuster";
+import { getSubdividedBuildingCells, applyBuildingCellsToPlots } from "../../../lib/building-grid";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 import { getClientMapCenter } from "../../../lib/config";
+import { CMP_BOUNDARY_OFFSETS_METERS } from "../../../components/CemeteryMap";
 
 const CemeteryMap = dynamic(() => import("../../../components/CemeteryMap"), {
   ssr: false,
@@ -51,11 +55,147 @@ function MapPageInner() {
   const [locations, setLocations] = useState([]);
   const [routeCoords, setRouteCoords] = useState(null);
 
-  // View: plot shown in the details modal.
+  // View: plot shown in the side details drawer.
   const [detailsPlot, setDetailsPlot] = useState(null);
+  const [drawerCollapsed, setDrawerCollapsed] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // Edit-locations mode (drag & drop existing markers).
   const [editing, setEditing] = useState(false);
+
+  // Adjust / Crop transform mode (custom positioning)
+  const [adjustMode, setAdjustMode] = useState(false);
+  const [selectedScope, setSelectedScope] = useState("all");
+  const [gridAngle, setGridAngle] = useState(37.7);
+  const [savingBatch, setSavingBatch] = useState(false);
+  const originalPlotsRef = useRef([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(0);
+  const lastHistoryTimeRef = useRef(0);
+  const boundarySaveTimerRef = useRef(null);
+  const [toast, setToast] = useState("");
+
+  // Blue boundary area customization
+  const [boundaryOffsets, setBoundaryOffsets] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("cmp_custom_boundary_offsets");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length >= 3) {
+            return parsed;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return CMP_BOUNDARY_OFFSETS_METERS;
+  });
+  const [editBoundaryLines, setEditBoundaryLines] = useState(false);
+
+  // Building Block / Row Generator Configuration
+  const [buildingConfig, setBuildingConfig] = useState({
+    active: false,
+    targetRow: "ROW-E02",
+    numCols: 10,
+    numRows: 1,
+    lengthMeters: 26.5,
+    widthMeters: 2.8,
+    angleDeg: 37.7,
+    centerLat: 8.4659864,
+    centerLng: 124.6569998,
+    invertCols: false,
+  });
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState(null);
+
+  // In-page fullscreen mode (hides sidebar & dashboard header)
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  useEffect(() => {
+    if (isFullScreen) {
+      document.body.classList.add("map-fullscreen-active");
+    } else {
+      document.body.classList.remove("map-fullscreen-active");
+    }
+
+    const t1 = setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 60);
+    const t2 = setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 200);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      document.body.classList.remove("map-fullscreen-active");
+    };
+  }, [isFullScreen]);
+
+  // Press Escape to exit fullscreen mode
+  useEffect(() => {
+    if (!isFullScreen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setIsFullScreen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFullScreen]);
+
+  // Debounced persistence of the shared boundary polygon to the server. The
+  // edit controls are Admin-only, so non-Admin GET-only users never call this.
+  const scheduleBoundarySave = useCallback(
+    (offsets) => {
+      clearTimeout(boundarySaveTimerRef.current);
+      boundarySaveTimerRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch("/api/settings/boundary", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ offsets }),
+          });
+          if (!res.ok && res.status !== 401 && res.status !== 403) {
+            setToast("Boundary could not be saved");
+          }
+        } catch {
+          setToast("Boundary could not be saved");
+        }
+      }, 800);
+    },
+    [setToast]
+  );
+
+  // Clear any pending boundary save when leaving the page.
+  useEffect(() => () => clearTimeout(boundarySaveTimerRef.current), []);
+
+  const handleUpdateBoundaryOffsets = useCallback(
+    (newOffsets) => {
+      setBoundaryOffsets(newOffsets);
+      try {
+        localStorage.setItem("cmp_custom_boundary_offsets", JSON.stringify(newOffsets));
+      } catch {
+        // ignore — local cache only
+      }
+      scheduleBoundarySave(newOffsets);
+    },
+    [scheduleBoundarySave]
+  );
+
+  const handleResetBoundary = useCallback(() => {
+    setBoundaryOffsets(CMP_BOUNDARY_OFFSETS_METERS);
+    try {
+      localStorage.removeItem("cmp_custom_boundary_offsets");
+    } catch {
+      // ignore — local cache only
+    }
+    scheduleBoundarySave(CMP_BOUNDARY_OFFSETS_METERS);
+    setToast("Boundary lines reset to default");
+  }, [scheduleBoundarySave, setToast]);
 
   // Placement: setting one plot's location. `pending` is either an existing
   // plot object, or { isNew: true, plotNumber, locationDetailId } for a new one.
@@ -70,7 +210,6 @@ function MapPageInner() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
 
   const fetchPlots = useCallback(async () => {
     try {
@@ -90,6 +229,20 @@ function MapPageInner() {
       try {
         const res = await fetch("/api/locations");
         setLocations((await res.json()) || []);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+    // The boundary polygon is shared, server-persisted layout data. Fall back
+    // to the locally cached/default value until the server responds.
+    (async () => {
+      try {
+        const res = await fetch("/api/settings/boundary");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data?.offsets) && data.offsets.length >= 3) {
+          setBoundaryOffsets(data.offsets);
+        }
       } catch (err) {
         console.error(err);
       }
@@ -142,26 +295,58 @@ function MapPageInner() {
     return null;
   }, [locations]);
 
-  // Deep-link: /dashboard/map?plot=<id>
+  const scrollToMap = useCallback(() => {
+    setTimeout(() => {
+      document.getElementById("cemetery-map-container")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  }, []);
+
+  const startPlacing = useCallback((plot) => {
+    setDetailsPlot(null);
+    setRouteCoords(null);
+    setEditing(false);
+    setAdjustMode(false);
+    setError("");
+    setPending(plot);
+    setDraftCoords(hasGps(plot) ? { lat: Number(plot.gpsLat), lng: Number(plot.gpsLng) } : null);
+    scrollToMap();
+  }, [scrollToMap]);
+
+  // Deep-link: /dashboard/map?plot=<id|plotNumber> or ?q=<term>
   useEffect(() => {
     const target = searchParams.get("plot");
-    if (!target || !plots.length) return;
-    const plot = plots.find((item) => String(item.id) === String(target));
+    const q = searchParams.get("q");
+    if ((!target && !q) || !plots.length) return;
+
+    let plot = null;
+    if (target) {
+      plot = plots.find(
+        (item) => String(item.id) === String(target) || item.plotNumber?.toLowerCase() === target.toLowerCase()
+      );
+    } else if (q) {
+      const qLower = q.toLowerCase();
+      plot = plots.find(
+        (item) =>
+          item.plotNumber?.toLowerCase().includes(qLower) ||
+          item.graves?.some((g) => g.deceasedName?.toLowerCase().includes(qLower))
+      );
+    }
     if (!plot) return;
 
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      if (hasGps(plot)) setDetailsPlot(plot);
-      else if (isAdmin) startPlacing(plot);
+      if (hasGps(plot)) {
+        setDetailsPlot(plot);
+        setDrawerCollapsed(false);
+      } else if (isAdmin) {
+        startPlacing(plot);
+      }
     });
     return () => {
       cancelled = true;
     };
-    // startPlacing intentionally uses the latest placement state after the
-    // deep-link target changes; the microtask prevents a synchronous cascade.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, plots, isAdmin]);
+  }, [searchParams, plots, isAdmin, startPlacing]);
 
   const [bolonsiriFocus, setBolonsiriFocus] = useState(null);
 
@@ -172,7 +357,7 @@ function MapPageInner() {
     setTimeout(() => {
       document.getElementById("cemetery-map-container")?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 100);
-  }, []);
+  }, [setToast]);
 
   // Deep-link: /dashboard/map?locate=bolonsiri
   useEffect(() => {
@@ -191,25 +376,10 @@ function MapPageInner() {
     setPending(null);
     setDraftCoords(null);
     setEditing(false);
+    setAdjustMode(false);
     setAddOpen(false);
     setUnplacedOpen(false);
     setError("");
-  }
-
-  function scrollToMap() {
-    setTimeout(() => {
-      document.getElementById("cemetery-map-container")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 100);
-  }
-
-  function startPlacing(plot) {
-    setDetailsPlot(null);
-    setRouteCoords(null);
-    setEditing(false);
-    setError("");
-    setPending(plot);
-    setDraftCoords(hasGps(plot) ? { lat: Number(plot.gpsLat), lng: Number(plot.gpsLng) } : null);
-    scrollToMap();
   }
 
   function openAdd() {
@@ -239,6 +409,313 @@ function MapPageInner() {
       setEditing(true);
       scrollToMap();
     }
+  }
+
+  const pushHistory = useCallback((newPlots, newAngle) => {
+    const nextAngle = newAngle ?? gridAngle;
+    const now = Date.now();
+    const isRapid = now - lastHistoryTimeRef.current < 300;
+    lastHistoryTimeRef.current = now;
+
+    const currentIdx = historyIndexRef.current;
+    const snapshot = {
+      plots: JSON.parse(JSON.stringify(newPlots)),
+      gridAngle: nextAngle,
+    };
+
+    if (isRapid && currentIdx > 0) {
+      historyRef.current[currentIdx] = snapshot;
+    } else {
+      const nextHistory = historyRef.current.slice(0, currentIdx + 1);
+      nextHistory.push(snapshot);
+      if (nextHistory.length > 50) nextHistory.shift();
+      historyRef.current = nextHistory;
+      historyIndexRef.current = nextHistory.length - 1;
+    }
+
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(false);
+  }, [gridAngle]);
+
+  const handleUpdatePlotsWithHistory = useCallback((updatedPlots) => {
+    setPlots(updatedPlots);
+    pushHistory(updatedPlots, gridAngle);
+  }, [gridAngle, pushHistory]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndexRef.current <= 0) return;
+    const newIdx = historyIndexRef.current - 1;
+    historyIndexRef.current = newIdx;
+    const target = historyRef.current[newIdx];
+    if (target) {
+      setPlots(JSON.parse(JSON.stringify(target.plots)));
+      if (target.gridAngle != null) {
+        setGridAngle(target.gridAngle);
+      }
+    }
+    setCanUndo(newIdx > 0);
+    setCanRedo(true);
+    setToast("Undo (Ctrl+Z)");
+  }, [setToast]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    const newIdx = historyIndexRef.current + 1;
+    historyIndexRef.current = newIdx;
+    const target = historyRef.current[newIdx];
+    if (target) {
+      setPlots(JSON.parse(JSON.stringify(target.plots)));
+      if (target.gridAngle != null) {
+        setGridAngle(target.gridAngle);
+      }
+    }
+    setCanUndo(true);
+    setCanRedo(newIdx < historyRef.current.length - 1);
+    setToast("Restore / Redo (Ctrl+Y)");
+  }, [setToast]);
+
+  const handleCancelAdjust = useCallback(() => {
+    if (originalPlotsRef.current && originalPlotsRef.current.length > 0) {
+      setPlots(JSON.parse(JSON.stringify(originalPlotsRef.current)));
+    } else {
+      setPlots((prev) => prev.map((p) => (p._modified ? { ...p, _modified: false } : p)));
+    }
+    historyRef.current = [];
+    historyIndexRef.current = 0;
+    setCanUndo(false);
+    setCanRedo(false);
+    setAdjustMode(false);
+    setEditBoundaryLines(false);
+    setBuildingConfig((prev) => ({ ...prev, active: false }));
+    setToast("Editing cancelled. All changes discarded.");
+  }, [setToast]);
+
+  function toggleAdjustMode() {
+    if (adjustMode) {
+      if (plots.some((p) => p._modified)) {
+        handleCancelAdjust();
+      } else {
+        setAdjustMode(false);
+        setEditBoundaryLines(false);
+        setBuildingConfig((prev) => ({ ...prev, active: false }));
+      }
+    } else {
+      resetModes();
+      setDetailsPlot(null);
+      setRouteCoords(null);
+      const snapshot = JSON.parse(JSON.stringify(plots));
+      originalPlotsRef.current = snapshot;
+      historyRef.current = [{ plots: snapshot, gridAngle: gridAngle ?? 37.7 }];
+      historyIndexRef.current = 0;
+      lastHistoryTimeRef.current = 0;
+      setCanUndo(false);
+      setCanRedo(false);
+      setAdjustMode(true);
+      scrollToMap();
+      setToast("Adjust mode: drag central anchor or use buttons to align grid");
+    }
+  }
+
+  // Keyboard shortcut listener for Ctrl+Z (Undo) and Ctrl+Y (Restore/Redo)
+  useEffect(() => {
+    if (!adjustMode) return;
+
+    const handleKeyDown = (e) => {
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      if (!isCtrlOrMeta) return;
+
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if (e.key === "y" || e.key === "Y") {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [adjustMode, handleUndo, handleRedo]);
+
+  const handleSaveBatchPlots = useCallback(
+    async (overridePlots = null) => {
+      const list = Array.isArray(overridePlots) ? overridePlots : plots;
+      const modified = list.filter((p) => p._modified && !p._deleted);
+      const deletePlotIds = list
+        .filter((p) => p._deleted && p.id && Number.isInteger(Number(p.id)) && Number(p.id) > 0)
+        .map((p) => Number(p.id));
+
+      if (modified.length === 0 && deletePlotIds.length === 0) {
+        setToast("No plots were modified");
+        return false;
+      }
+      setSavingBatch(true);
+      try {
+        const res = await fetch("/api/plots/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plots: modified.map((p) => ({
+              id: p.id || null,
+              plotNumber: p.plotNumber,
+              locationDetailId: p.locationDetailId || p.locationDetail?.id || null,
+              status: p.status || "available",
+              gpsLat: p.gpsLat != null ? Number(p.gpsLat) : null,
+              gpsLng: p.gpsLng != null ? Number(p.gpsLng) : null,
+            })),
+            deletePlotIds,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const returnedPlotsMap = new Map();
+          for (const ret of data.plots || []) {
+            if (ret.plotNumber) returnedPlotsMap.set(ret.plotNumber, ret);
+            if (ret.id) returnedPlotsMap.set(`id-${ret.id}`, ret);
+          }
+
+          const deletedSet = new Set(data.deletedIds || deletePlotIds);
+
+          const savedPlots = list
+            .filter((p) => !deletedSet.has(Number(p.id)) && !p._deleted)
+            .map((p) => {
+              const ret =
+                (p.plotNumber && returnedPlotsMap.get(p.plotNumber)) ||
+                (p.id && returnedPlotsMap.get(`id-${p.id}`));
+              if (ret) {
+                return {
+                  ...p,
+                  ...ret,
+                  _modified: false,
+                  _isNew: false,
+                  _deleted: false,
+                };
+              }
+              return p._modified ? { ...p, _modified: false } : p;
+            });
+
+          setPlots(savedPlots);
+          originalPlotsRef.current = JSON.parse(JSON.stringify(savedPlots));
+          historyRef.current = [{ plots: savedPlots, gridAngle }];
+          historyIndexRef.current = 0;
+          setCanUndo(false);
+          setCanRedo(false);
+
+          let toastMsg = `Successfully saved ${data.updatedCount || modified.length} plot positions!`;
+          if (data.deletedCount > 0) {
+            toastMsg = `Successfully saved: updated ${data.updatedCount || 0} plots, removed ${data.deletedCount} columns!`;
+          }
+          setToast(toastMsg);
+          if (data.skippedCount > 0) {
+            setError(
+              `${data.skippedCount} plot(s) could not be saved because they are not in a section. Assign them to a section and try again.`
+            );
+          }
+          return true;
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setError(err.error || "Failed to save plot positions");
+          setToast("Failed to save changes");
+          return false;
+        }
+      } catch (err) {
+        console.error("Batch save error:", err);
+        setError("Failed to save plot positions");
+        setToast("Error saving changes");
+        return false;
+      } finally {
+        setSavingBatch(false);
+      }
+    },
+    [plots, gridAngle, setToast, setError]
+  );
+
+  const handlePresetSuccess = useCallback(
+    async (freshPlots) => {
+      if (Array.isArray(freshPlots) && freshPlots.length > 0) {
+        setPlots(freshPlots);
+        originalPlotsRef.current = JSON.parse(JSON.stringify(freshPlots));
+        historyRef.current = [{ plots: freshPlots, gridAngle }];
+        historyIndexRef.current = 0;
+        setCanUndo(false);
+        setCanRedo(false);
+      }
+      setToast("Bolonsiri Master Preset saved to database! 119 plots loaded.");
+      try {
+        const res = await fetch("/api/locations");
+        if (res.ok) {
+          setLocations((await res.json()) || []);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    [gridAngle, setToast]
+  );
+
+  const handleApplyAndSaveBuildingConfig = useCallback(
+    async (cfg = buildingConfig) => {
+      if (!cfg) return;
+      const targetPlots = plots
+        .filter(
+          (p) =>
+            !p._deleted &&
+            (p.plotNumber?.startsWith(cfg.targetRow) ||
+              (cfg.targetRow === "ROW-W07" && p.plotNumber === "WALAG-001"))
+        )
+        .sort((a, b) => {
+          if (a.plotNumber === "WALAG-001") return -1;
+          if (b.plotNumber === "WALAG-001") return 1;
+          return (a.plotNumber || "").localeCompare(b.plotNumber || "", undefined, { numeric: true });
+        });
+
+      if (targetPlots.length === 0) {
+        setToast(`No plots found for row ${cfg.targetRow}`);
+        return;
+      }
+
+      const cells = getSubdividedBuildingCells({
+        centerLat: cfg.centerLat,
+        centerLng: cfg.centerLng,
+        lengthMeters: cfg.lengthMeters,
+        widthMeters: cfg.widthMeters,
+        angleDeg: cfg.angleDeg,
+        numCols: cfg.numCols || targetPlots.length,
+        numRows: cfg.numRows || 1,
+        invertCols: cfg.invertCols || false,
+        targetPlots,
+        targetRow: cfg.targetRow,
+      });
+
+      const updated = applyBuildingCellsToPlots(cells, plots, cfg.targetRow);
+      setPlots(updated);
+      pushHistory(updated, gridAngle);
+      await handleSaveBatchPlots(updated);
+    },
+    [buildingConfig, plots, gridAngle, pushHistory, handleSaveBatchPlots, setToast]
+  );
+
+  function handleSinglePlotDrag(plot, lat, lng) {
+    const updated = plots.map((p) =>
+      p.id === plot.id
+        ? {
+            ...p,
+            gpsLat: Number(lat.toFixed(8)),
+            gpsLng: Number(lng.toFixed(8)),
+            _modified: true,
+          }
+        : p
+    );
+    setPlots(updated);
+    pushHistory(updated, gridAngle);
+    setToast(`Relocated ${plot.plotNumber} (Click Save when done)`);
   }
 
   const draftMarker = pending && draftCoords ? draftCoords : null;
@@ -336,12 +813,12 @@ function MapPageInner() {
     detailsPlot && hasGps(detailsPlot) ? { lat: Number(detailsPlot.gpsLat), lng: Number(detailsPlot.gpsLng) } : detailsPlot ? { lat: NaN, lng: NaN } : null;
 
   return (
-    <div>
+    <div style={isFullScreen ? { display: "flex", flexDirection: "column", height: "100%", flex: 1, minHeight: 0 } : undefined}>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap" }}>
         <div>
           <h1 className="page-title">Cemetery Map</h1>
           <p className="page-subtitle">
-            {isAdmin ? "Add plot markers, drag to relocate, and navigate" : "Interactive navigation with grave markers (powered by OpenStreetMap)"}
+            {isAdmin ? "Add plot markers, drag to relocate, and navigate" : "Interactive navigation with grave markers (powered by Google Maps)"}
           </p>
         </div>
 
@@ -369,13 +846,46 @@ function MapPageInner() {
               <button
                 className={`btn ${editing ? "" : "btn-ghost"} flex items-center gap-xs`}
                 onClick={toggleEditing}
-                disabled={!!pending}
+                disabled={!!pending || adjustMode}
                 style={editing ? { background: "var(--success, #2ECC71)", color: "#fff" } : undefined}
               >
                 {editing ? <><Check size={18} /> Done Editing</> : <><Pencil size={16} /> Edit Locations</>}
               </button>
+              <button
+                className={`btn ${adjustMode ? "" : "btn-secondary"} flex items-center gap-xs`}
+                onClick={toggleAdjustMode}
+                disabled={!!pending || editing}
+                style={adjustMode ? { background: "#0284c7", color: "#fff", borderColor: "#38bdf8" } : undefined}
+                title="Adjust plot positions like cropping/moving an image"
+              >
+                <Move size={16} />
+                <span>{adjustMode ? "Exit Adjust Mode" : "Adjust Grid (Crop & Move)"}</span>
+              </button>
             </>
           )}
+
+          {/* Full Screen Mode Toggle Button */}
+          <button
+            type="button"
+            className={`btn ${isFullScreen ? "" : "btn-secondary"} flex items-center gap-xs`}
+            onClick={() => setIsFullScreen((prev) => !prev)}
+            title={isFullScreen ? "Exit Full Screen view (Esc)" : "Full Screen view (hide sidebar and header)"}
+            style={
+              isFullScreen
+                ? { background: "#4f46e5", borderColor: "#6366f1", color: "#fff", fontWeight: 600 }
+                : undefined
+            }
+          >
+            {isFullScreen ? (
+              <>
+                <Minimize2 size={16} /> Exit Full Screen
+              </>
+            ) : (
+              <>
+                <Maximize2 size={16} /> Full Screen
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -399,20 +909,125 @@ function MapPageInner() {
       )}
 
       {editing && (
-        <div className="alert alert-info flex items-center gap-sm" style={{ marginBottom: "var(--space-md)" }}>
-          <Pencil size={16} /> <span className="text-sm">Edit mode: drag any plot marker to relocate it — changes save automatically. Click “Done Editing” when finished.</span>
+        <div
+          className="alert alert-info flex items-center gap-sm"
+          style={{
+            marginBottom: "var(--space-md)",
+            background: "rgba(14, 165, 233, 0.08)",
+            borderColor: "rgba(14, 165, 233, 0.28)",
+          }}
+        >
+          <Pencil size={16} style={{ color: "#0284c7", flexShrink: 0 }} />
+          <span className="text-sm" style={{ color: "var(--color-text-secondary, #334155)" }}>
+            <strong style={{ color: "var(--color-text-primary, #0f172a)" }}>Edit mode:</strong> drag any plot marker to relocate it — changes save automatically. Click “Done Editing” when finished.
+          </span>
         </div>
       )}
 
-      {/* Map (full width) */}
-      <div id="cemetery-map-container" style={{ height: 620, position: "relative" }}>
+      {adjustMode && (
+        <div
+          className="alert alert-info flex items-center gap-sm"
+          style={{
+            marginBottom: "var(--space-md)",
+            background: "rgba(14, 165, 233, 0.08)",
+            borderColor: "rgba(14, 165, 233, 0.3)",
+          }}
+        >
+          <Move size={16} style={{ color: "#0284c7", flexShrink: 0 }} />
+          <span className="text-sm" style={{ color: "var(--color-text-secondary, #334155)" }}>
+            <strong style={{ color: "var(--color-text-primary, #0f172a)" }}>Crop / Adjust Mode:</strong> Drag the central cyan{" "}
+            <strong style={{ color: "#0284c7" }}>✥ MOVE</strong> anchor to slide the plot grid, or use the D-pad arrows to nudge by 0.1m / 0.5m. Click{" "}
+            <strong style={{ color: "var(--accent-dark, #059669)" }}>Save</strong> when plots line up with the concrete roofs.
+          </span>
+        </div>
+      )}
+
+      {/* Map (full width with digital mapping layout) */}
+      <div
+        id="cemetery-map-container"
+        style={{
+          height: isFullScreen ? "100%" : "calc(100vh - 190px)",
+          flex: isFullScreen ? 1 : undefined,
+          minHeight: isFullScreen ? 0 : 660,
+          position: "relative",
+          borderRadius: "var(--radius-lg, 12px)",
+          overflow: "hidden",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+        }}
+      >
+        {/* Slide-out Plot Details Drawer */}
+        <PlotDetailsDrawer
+          plot={detailsPlot}
+          allPlots={plots}
+          isOpen={Boolean(!drawerCollapsed && !pending && !editing && !adjustMode)}
+          isCollapsed={drawerCollapsed}
+          onToggleCollapse={() => setDrawerCollapsed((prev) => !prev)}
+          onClose={() => {
+            setDetailsPlot(null);
+            setDrawerCollapsed(true);
+          }}
+          onSelectPlot={(plot) => {
+            setRouteCoords(null);
+            setDetailsPlot(plot);
+            if (plot) setDrawerCollapsed(false);
+          }}
+          onRouteChange={setRouteCoords}
+          onRelocatePlot={(plot) => startPlacing(plot)}
+          activeRoute={Boolean(routeCoords && routeCoords.length > 1)}
+          isAdmin={isAdmin}
+          authenticated={Boolean(session?.user)}
+        />
+
+        {/* Plot Position Adjuster Toolbar (Crop / Transform HUD) */}
+        <PlotPositionAdjuster
+          active={adjustMode}
+          onClose={() => {
+            if (plots.some((p) => p._modified)) {
+              handleCancelAdjust();
+            } else {
+              setAdjustMode(false);
+              setEditBoundaryLines(false);
+              setBuildingConfig((prev) => ({ ...prev, active: false }));
+            }
+          }}
+          onCancel={handleCancelAdjust}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          plots={plots}
+          onUpdatePlots={handleUpdatePlotsWithHistory}
+          onSave={handleSaveBatchPlots}
+          onPresetSuccess={handlePresetSuccess}
+          saving={savingBatch}
+          selectedScope={selectedScope}
+          onSelectScope={setSelectedScope}
+          gridAngle={gridAngle}
+          onChangeGridAngle={(newAngleOrUpdater) => {
+            const nextAngle = typeof newAngleOrUpdater === "function" ? newAngleOrUpdater(gridAngle) : newAngleOrUpdater;
+            setGridAngle(nextAngle);
+            pushHistory(plots, nextAngle);
+          }}
+          boundaryOffsets={boundaryOffsets}
+          onUpdateBoundaryOffsets={handleUpdateBoundaryOffsets}
+          editBoundaryLines={editBoundaryLines}
+          onToggleEditBoundaryLines={() => setEditBoundaryLines((prev) => !prev)}
+          onResetBoundary={handleResetBoundary}
+          buildingConfig={buildingConfig}
+          onUpdateBuildingConfig={setBuildingConfig}
+          confirmDeleteRow={confirmDeleteRow}
+          onConfirmDeleteRow={setConfirmDeleteRow}
+        />
+
         <CemeteryMap
           plots={plots}
           selectedPlot={detailsPlot}
           onSelectPlot={(plot) => {
-            if (pending || editing) return;
+            if (pending || editing || adjustMode) return;
             setRouteCoords(null);
             setDetailsPlot(plot);
+            if (plot) setDrawerCollapsed(false);
           }}
           routeCoords={routeCoords}
           placingMode={!!pending}
@@ -421,6 +1036,26 @@ function MapPageInner() {
           focusPoint={focusPoint}
           editable={editing}
           onPlotDragEnd={handlePlotDragEnd}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          adjustMode={adjustMode}
+          onToggleAdjustMode={toggleAdjustMode}
+          selectedScope={selectedScope}
+          onSelectScope={setSelectedScope}
+          onUpdatePlots={handleUpdatePlotsWithHistory}
+          gridAngle={gridAngle}
+          onChangeGridAngle={(newAngleOrUpdater) => {
+            const nextAngle = typeof newAngleOrUpdater === "function" ? newAngleOrUpdater(gridAngle) : newAngleOrUpdater;
+            setGridAngle(nextAngle);
+            pushHistory(plots, nextAngle);
+          }}
+          onSinglePlotDrag={handleSinglePlotDrag}
+          boundaryOffsets={boundaryOffsets}
+          onUpdateBoundaryOffsets={handleUpdateBoundaryOffsets}
+          editBoundaryLines={editBoundaryLines}
+          buildingConfig={buildingConfig}
+          onUpdateBuildingConfig={setBuildingConfig}
+          onApplyBuildingConfig={handleApplyAndSaveBuildingConfig}
         />
 
         {/* Active Route Indicator */}
@@ -463,38 +1098,6 @@ function MapPageInner() {
             </button>
           </div>
         )}
-
-        {/* Legend Overlay */}
-        <div
-          className="card"
-          style={{
-            position: "absolute",
-            bottom: "24px",
-            left: "24px",
-            zIndex: 400,
-            padding: "10px 16px",
-            margin: 0,
-            background: "rgba(15, 23, 42, 0.7)",
-            backdropFilter: "blur(12px)",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-            maxWidth: "calc(100% - 48px)"
-          }}
-        >
-          <div className="flex items-center gap-md" style={{ flexWrap: "wrap" }}>
-            <span className="text-xs text-muted" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Legend:</span>
-            {[
-              { color: "#2ECC71", label: "Available" },
-              { color: "#FF6B6B", label: "Occupied" },
-              { color: "#FFB547", label: "Reserved" },
-              { color: "#4ECDC4", label: "Maintenance" },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center gap-xs">
-                <div style={{ width: 10, height: 10, borderRadius: "50%", background: item.color, border: "1px solid rgba(255,255,255,0.2)" }} />
-                <span className="text-sm" style={{ color: "#e2e8f0" }}>{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
 
         {toast && (
           <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "var(--primary)", color: "#ffffff", padding: "0.5rem 1rem", borderRadius: "var(--radius-md)", zIndex: 500, fontSize: "0.85rem", fontWeight: 500, whiteSpace: "nowrap", boxShadow: "0 4px 15px rgba(0,0,0,0.4)" }}>
@@ -584,120 +1187,6 @@ function MapPageInner() {
         </Modal>
       )}
 
-      {/* Plot Details modal (view mode, on marker click) */}
-      {detailsPlot && !pending && !editing && (
-        <Modal
-          title={
-            <div className="flex items-center gap-sm">
-              <span style={{ fontSize: "1.15rem", fontWeight: 700 }}>Plot {detailsPlot.plotNumber}</span>
-              <span
-                className={`badge ${
-                  detailsPlot.status === "available"
-                    ? "badge-success"
-                    : detailsPlot.status === "occupied"
-                    ? "badge-danger"
-                    : detailsPlot.status === "reserved"
-                    ? "badge-warning"
-                    : "badge-info"
-                }`}
-                style={{ textTransform: "uppercase", fontSize: "0.68rem", fontWeight: 700, padding: "2px 8px" }}
-              >
-                {detailsPlot.status}
-              </span>
-            </div>
-          }
-          onClose={() => setDetailsPlot(null)}
-        >
-          <div className="flex flex-col gap-sm">
-            {/* Location & Section 2-col info */}
-            <div
-              style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid rgba(255, 255, 255, 0.07)",
-                borderRadius: "var(--radius-md)",
-                padding: "0.65rem 0.85rem",
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "0.65rem",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
-                  Location
-                </div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-primary)" }}>
-                  {detailsPlot.locationDetail?.location?.name || "—"}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
-                  Section
-                </div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 500, color: "var(--text-primary)" }}>
-                  {detailsPlot.locationDetail?.subsection || "—"}
-                </div>
-              </div>
-            </div>
-
-            {/* GPS & Deceased Record */}
-            <div
-              style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid rgba(255, 255, 255, 0.07)",
-                borderRadius: "var(--radius-md)",
-                padding: "0.65rem 0.85rem",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  GPS Coordinates
-                </span>
-                <span style={{ fontSize: "0.78rem", fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
-                  {hasGps(detailsPlot) ? `${Number(detailsPlot.gpsLat).toFixed(6)}, ${Number(detailsPlot.gpsLng).toFixed(6)}` : "Not set"}
-                </span>
-              </div>
-
-              {detailsPlot.graves?.length > 0 && (
-                <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)", paddingTop: "0.45rem" }}>
-                  <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
-                    Deceased Record
-                  </div>
-                  {detailsPlot.graves.map((g) => (
-                    <div key={g.id} style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text-primary)" }}>
-                      {g.deceasedName}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Admin Relocate Pin Action */}
-            {isAdmin && (
-              <button
-                className="btn btn-ghost btn-sm flex items-center justify-center gap-xs"
-                onClick={() => startPlacing(detailsPlot)}
-                style={{ width: "100%", border: "1px solid rgba(255, 255, 255, 0.1)" }}
-              >
-                <Crosshair size={14} /> {hasGps(detailsPlot) ? "Relocate Pin on Map" : "Set GPS Location"}
-              </button>
-            )}
-
-            {/* Directions & Routing */}
-            <NavigationOverlay
-              key={detailsPlot.id}
-              destination={detailsDestination}
-              onRouteChange={setRouteCoords}
-              onViewOnMap={() => setDetailsPlot(null)}
-              plotId={detailsPlot.id}
-              channel="dashboard"
-              authenticated={Boolean(session?.user)}
-            />
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

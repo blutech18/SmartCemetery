@@ -1418,6 +1418,68 @@ body.modal-open .main-content {
   height: calc(100vh - var(--header-height) - 2 * var(--space-xl));
 }
 
+/* ── In-Page Fullscreen Map Mode ───────────────────────────── */
+body.map-fullscreen-active {
+  overflow: hidden !important;
+}
+
+body.map-fullscreen-active .sidebar,
+body.map-fullscreen-active .menu-toggle,
+body.map-fullscreen-active .header,
+body.map-fullscreen-active .staff-secondary-header,
+body.map-fullscreen-active .sidebar-overlay {
+  display: none !important;
+}
+
+body.map-fullscreen-active .app-layout {
+  min-height: 100vh !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+}
+
+body.map-fullscreen-active .main-content {
+  margin-left: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100vh !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body.map-fullscreen-active .page-content {
+  padding: 0.65rem 1rem !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100vh !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+body.map-fullscreen-active .page-header {
+  margin-bottom: 0.5rem !important;
+  flex-shrink: 0 !important;
+}
+
+body.map-fullscreen-active .page-title {
+  font-size: 1.5rem !important;
+}
+
+body.map-fullscreen-active .page-subtitle {
+  font-size: 0.85rem !important;
+}
+
+body.map-fullscreen-active .alert {
+  margin-bottom: 0.4rem !important;
+  padding: 0.45rem 0.75rem !important;
+  flex-shrink: 0 !important;
+}
+
 /* ── Search Results ────────────────────────────────────────── */
 .search-result {
   display: flex;
@@ -3581,3 +3643,29 @@ html[data-theme="light"] .hf-badge {
   border-color: var(--border-hover);
   background: var(--theme-hover-bg, rgba(255, 255, 255, 0.05));
 }
+
+/* GIS Grid Inspector Header Responsiveness */
+@media (max-width: 420px) {
+  .cmp-guide-text {
+    display: none !important;
+  }
+}
+
+/* Google Maps InfoWindow - Single Row Callout with Inline Close ✕ */
+.gm-style .gm-style-iw-c button.gm-ui-hover-effect,
+.gm-style .gm-style-iw-chr {
+  display: none !important;
+}
+
+.gm-style .gm-style-iw-c {
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16) !important;
+}
+
+.gm-style .gm-style-iw-d {
+  overflow: visible !important;
+  padding: 0 !important;
+  max-height: none !important;
+}
+

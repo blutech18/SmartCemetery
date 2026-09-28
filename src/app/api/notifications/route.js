@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/authz";
 import { validateBody, validationErrorResponse } from "@/lib/validation";
+import { getClientIp, writeAuditLog } from "@/lib/audit";
 
 // Prisma / bcrypt-adjacent work needs the Node.js runtime, not edge.
 export const runtime = "nodejs";
@@ -63,6 +64,15 @@ export async function PATCH(request) {
     if (result.count !== 1) {
       return NextResponse.json({ error: "Notification not found" }, { status: 404 });
     }
+
+    // Best-effort audit after persistence.
+    await writeAuditLog({
+      userId: auth.user.id,
+      action: "notification.read",
+      ipAddress: getClientIp(request),
+      details: { notificationId: validation.value.id },
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("PATCH /api/notifications error:", error);

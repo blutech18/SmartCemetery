@@ -43,6 +43,8 @@ export default function NavigationOverlay({
   plotId,
   channel = "public",
   authenticated = false,
+  hideTitle = false,
+  flat = false,
 }) {
   const [origin, setOrigin] = useState(null);
   const [steps, setSteps] = useState([]);
@@ -175,28 +177,30 @@ export default function NavigationOverlay({
   const hasError = status === "error" || status === "denied";
 
   return (
-    <div style={{
+    <div style={flat ? { width: "100%" } : {
       background: "rgba(255, 255, 255, 0.03)",
       border: "1px solid rgba(255, 255, 255, 0.08)",
       borderRadius: "var(--radius-md)",
       padding: "0.85rem 1rem",
     }}>
-      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-        <div className="flex items-center gap-xs">
-          <Navigation size={15} style={{ color: "var(--primary-light)" }} />
-          <h4 style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Directions</h4>
+      {!hideTitle && (
+        <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+          <div className="flex items-center gap-xs">
+            <Navigation size={15} style={{ color: "var(--primary-light)" }} />
+            <h4 style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Directions</h4>
+          </div>
+          {origin && status === "ready" && onViewOnMap && (
+            <button
+              type="button"
+              className="btn btn-primary btn-xs"
+              onClick={onViewOnMap}
+              style={{ fontSize: "0.75rem", padding: "3px 10px", height: "auto" }}
+            >
+              View on Map →
+            </button>
+          )}
         </div>
-        {origin && status === "ready" && onViewOnMap && (
-          <button
-            type="button"
-            className="btn btn-primary btn-xs"
-            onClick={onViewOnMap}
-            style={{ fontSize: "0.75rem", padding: "3px 10px", height: "auto" }}
-          >
-            View on Map →
-          </button>
-        )}
-      </div>
+      )}
 
       {!destinationValid ? (
         // Missing/invalid destination GPS -> directions unavailable, no route,

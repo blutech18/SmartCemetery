@@ -288,3 +288,15 @@ model RateLimitBucket {
   @@index([expiresAt])
   @@map("rate_limit_buckets")
 }
+
+// ─── APPLICATION SETTINGS ─────────────────────────────────────
+
+// Small key/value store for shared, non-relational settings such as the
+// cemetery boundary polygon edited from the map. Values are JSON strings.
+model AppSetting {
+  key       String   @id @map("setting_key") @db.VarChar(80)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}

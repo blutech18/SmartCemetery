@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/authz";
+import { getClientIp, writeAuditLog } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
 const ROLES = ["Admin", "Staff", "Client"];
 const STATUSES = ["active", "disabled"];
+// Keep in sync with the creation policy and the seed requirement (>=12 chars).
+const PASSWORD_MIN = 12;
+// bcrypt only considers the first 72 bytes; reject longer input instead of
+// silently truncating it.
+const PASSWORD_MAX_BYTES = 72;
 
 /**
  * PATCH /api/users/[id] — Update a user's profile, role, status, or password.
@@ -108,13 +114,19 @@ export async function PATCH(request, { params }) {
     }
 
     if (password !== undefined) {
-      if (String(password).length < 8) {
+      if (typeof password !== "string" || password.length < PASSWORD_MIN) {
         return NextResponse.json(
-          { error: "Password must be at least 8 characters" },
+          { error: `Password must be at least ${PASSWORD_MIN} characters` },
           { status: 400 }
         );
       }
-      data.passwordHash = await bcrypt.hash(String(password), 12);
+      if (Buffer.byteLength(password, "utf8") > PASSWORD_MAX_BYTES) {
+        return NextResponse.json(
+          { error: "Password is too long" },
+          { status: 400 }
+        );
+      }
+      data.passwordHash = await bcrypt.hash(password, 12);
     }
 
     if (Object.keys(data).length === 0) {
@@ -131,6 +143,20 @@ export async function PATCH(request, { params }) {
         status: true,
         createdAt: true,
         userType: { select: { typeName: true } },
+      },
+    });
+
+    // Audit the mutation after it is persisted. Record which fields changed
+    // (never their values) so role changes and password resets are attributable.
+    await writeAuditLog({
+      userId: authz.user.id,
+      action: "user.update",
+      ipAddress: getClientIp(request),
+      details: {
+        targetUserId: userId,
+        fields: Object.keys(data).map((field) =>
+          field === "passwordHash" ? "password" : field
+        ),
       },
     });
 

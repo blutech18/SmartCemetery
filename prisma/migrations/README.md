@@ -2,13 +2,14 @@
 
 ## Fresh database
 
-Run `npx prisma migrate deploy`. The checked-in chain contains five migrations:
+Run `npx prisma migrate deploy`. The checked-in chain contains six migrations:
 
 1. `20260701000000_init` creates the original eleven-table schema.
 2. `20260710200224_add_notifications_and_widen_grave_ciphertext` adds notifications and widens encrypted fields.
 3. `20260714120000_enforce_plot_occupancy_and_retention` enforces one grave per plot and retention-safe foreign keys.
 4. `20260715120000_complete_operational_workflows` adds verification, encryption metadata, broadcasts, navigation metadata, and archival runs.
 5. `20260715133000_add_rate_limit_buckets` adds privacy-preserving database-backed throttle buckets.
+6. `20260928000000_add_app_settings` adds the `app_settings` table for shared non-relational configurations (such as map boundary offsets).
 
 ## Existing database created with `prisma db push`
 

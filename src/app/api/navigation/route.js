@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/authz";
 import { validateBody, validationErrorResponse } from "@/lib/validation";
+import { getClientIp, writeAuditLog } from "@/lib/audit";
 
 const NAVIGATION_SCHEMA = {
   origin: { type: "string", trim: true, max: 255 },
@@ -40,6 +41,15 @@ export async function POST(request) {
       },
       select: { id: true },
     });
+
+    // Best-effort audit after persistence.
+    await writeAuditLog({
+      userId: auth.user.id,
+      action: "navigation.create",
+      ipAddress: getClientIp(request),
+      details: { navigationId: nav.id, channel: validation.value.channel ?? "dashboard" },
+    });
+
     return NextResponse.json({ success: true, id: nav.id }, { status: 201 });
   } catch (error) {
     console.error("POST /api/navigation error:", error);

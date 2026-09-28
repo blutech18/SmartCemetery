@@ -26,7 +26,11 @@ vi.mock("@/lib/db", () => ({
 }));
 
 // Authorization guard — controlled per test.
-vi.mock("@/lib/authz", () => ({ requireRole: vi.fn() }));
+vi.mock("@/lib/authz", () => ({
+  requireRole: vi.fn(),
+  requireAuth: vi.fn(),
+  isAuthorized: vi.fn(),
+}));
 
 // Search helper (imported by the route) — never used on the paths under test,
 // but must exist so the module loads.
@@ -48,7 +52,7 @@ vi.mock("@/lib/validation", async (importOriginal) => {
 import { NextResponse } from "next/server";
 import { GET, POST } from "@/app/api/graves/route";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/authz";
+import { requireRole, requireAuth, isAuthorized } from "@/lib/authz";
 import { writeAuditLog } from "@/lib/audit";
 import { checkDuplicateGrave } from "@/lib/validation";
 import { decrypt, encryptGraveDetail } from "@/lib/encryption";
@@ -111,6 +115,8 @@ beforeEach(() => {
 
   // Sensible success defaults; individual tests override as needed.
   requireRole.mockResolvedValue({ ok: true, user: { id: 1, role: "Admin" } });
+  requireAuth.mockResolvedValue({ ok: true, user: { id: 1, role: "Admin" } });
+  isAuthorized.mockReturnValue(true);
   checkDuplicateGrave.mockResolvedValue({ hasDuplicate: false, duplicates: [] });
   prisma.plot.findUnique.mockResolvedValue({ id: 10, status: "available" });
   prisma.plot.update.mockResolvedValue({});
@@ -204,6 +210,8 @@ describe("Task 5.2 — secured grave endpoints", () => {
     const encrypted = encryptGraveDetail(plaintext);
 
     requireRole.mockResolvedValue({ ok: true, user: { id: 1, role: "Admin" } });
+    requireAuth.mockResolvedValue({ ok: true, user: { id: 1, role: "Admin" } });
+    isAuthorized.mockReturnValue(true);
     prisma.grave.findMany.mockResolvedValue([
       { id: 1, deceasedName: "Somebody", details: { ...encrypted } },
     ]);
@@ -227,9 +235,11 @@ describe("Task 5.2 — secured grave endpoints", () => {
       notes: "note",
     });
 
-    requireRole
-      .mockResolvedValueOnce({ ok: false, response: null })
-      .mockResolvedValueOnce({ ok: true, user: { id: 2, role: "Staff" } });
+    // A role without the `verify` permission (e.g. Client) may search/list but
+    // must never receive sensitive detail fields.
+    requireAuth.mockResolvedValue({ ok: true, user: { id: 2, role: "Client" } });
+    isAuthorized.mockReturnValue(false);
+    requireRole.mockResolvedValue({ ok: true, user: { id: 2, role: "Staff" } });
     prisma.grave.findMany.mockResolvedValue([
       { id: 1, deceasedName: "Somebody", details: { ...encrypted } },
     ]);

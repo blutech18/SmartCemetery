@@ -400,7 +400,7 @@ export default function UsersPage() {
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required={!editingUser}
-                  minLength={8}
+                  minLength={12}
                   id="user-form-password"
                   autoComplete="new-password"
                 />

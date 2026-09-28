@@ -4,8 +4,36 @@ import {
   RoutingServiceError,
   validateRoutingRequest,
 } from "@/lib/routing";
+import { getClientIp } from "@/lib/audit";
+import { boundedRateLimit, consumeRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request) {
+  // This route is intentionally public (public/kiosk directions), but it calls
+  // an external routing provider with caller-supplied coordinates, so it must
+  // be rate limited by client IP to prevent quota/cost abuse.
+  const baseLimit = boundedRateLimit("ROUTING_RATE_LIMIT_MAX", 120, 10, 5_000);
+  const windowSeconds = boundedRateLimit("ROUTING_RATE_LIMIT_WINDOW_SECONDS", 60, 10, 3_600);
+  let throttle;
+  try {
+    throttle = await consumeRateLimit({
+      scope: "routing",
+      identifier: getClientIp(request) || "unresolved",
+      limit: baseLimit,
+      windowMs: windowSeconds * 1000,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: { type: "rate_limit_unavailable", message: "Routing is temporarily unavailable." } },
+      { status: 503 }
+    );
+  }
+  if (!throttle.allowed) {
+    return NextResponse.json(
+      { error: { type: "rate_limit", message: "Too many route requests. Please try again shortly." } },
+      { status: 429, headers: { "Retry-After": String(throttle.retryAfterSeconds) } }
+    );
+  }
+
   let body;
   try {
     body = await request.json();

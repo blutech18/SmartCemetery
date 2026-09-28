@@ -15,7 +15,7 @@
     "test:mysql": "node scripts/test-mysql.js",
     "test:release": "npm run lint && npm test && npm run build",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate deploy",
+    "db:migrate": "node scripts/migrate-db.js",
     "db:push": "prisma db push",
     "db:seed": "node prisma/seed.js",
     "db:setup": "node scripts/setup-db.js",

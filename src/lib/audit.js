@@ -67,15 +67,20 @@ export function getClientIp(request) {
  * Best-effort: any failure is caught and logged via console.error and NOT
  * rethrown, so it can never revert the already-persisted mutation (Req 14.4).
  *
+ * `details` is optional structured context (e.g. affected counts). The
+ * `UserLog` model only has an `action` column, so details are appended to the
+ * action string, bounded to the column's 255-char limit.
+ *
  * @param {Object} params
  * @param {number} params.userId - acting user's identifier
  * @param {string} params.action - entity type + operation, e.g. "grave.create"
  * @param {string} [params.ipAddress] - client IP; empty string is stored as null
+ * @param {object|string} [params.details] - optional structured context
  * @param {import("@prisma/client").Prisma.TransactionClient} [params.tx]
  *        optional Prisma transaction client; falls back to the shared client
  * @returns {Promise<void>}
  */
-export async function writeAuditLog({ userId, action, ipAddress, tx } = {}) {
+export async function writeAuditLog({ userId, action, ipAddress, tx, details } = {}) {
   const client = tx ?? prisma;
 
   try {
@@ -88,10 +93,25 @@ export async function writeAuditLog({ userId, action, ipAddress, tx } = {}) {
       throw new Error(`invalid audit userId: ${String(userId)}`);
     }
 
+    // Preserve the action and append bounded structured context.
+    let auditAction = String(action ?? "");
+    if (details !== undefined && details !== null) {
+      let encoded = "";
+      try {
+        encoded = typeof details === "string" ? details : JSON.stringify(details);
+      } catch {
+        encoded = "";
+      }
+      if (encoded) {
+        const prefix = `${auditAction} `;
+        auditAction = prefix + encoded.slice(0, Math.max(0, 255 - prefix.length));
+      }
+    }
+
     await client.userLog.create({
       data: {
         userId: numericUserId,
-        action,
+        action: auditAction,
         // Store empty/absent IP as null (schema ipAddress is nullable)
         ipAddress: ipAddress ? ipAddress : null,
       },

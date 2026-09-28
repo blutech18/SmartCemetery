@@ -1,0 +1,936 @@
+{
+  "name": "Bolonsiri Concrete Apartments (Current Localdev Design)",
+  "description": "Exact plot layout and crypt positions aligned with drone/satellite concrete foundations.",
+  "totalPlots": 119,
+  "rows": {
+    "ROW-E01": {
+      "rowKey": "ROW-E01",
+      "plotCount": 9,
+      "centerLat": 8.46604176,
+      "centerLng": 124.65691851,
+      "plots": [
+        {
+          "plotNumber": "ROW-E01-C01",
+          "lat": 8.46599292,
+          "lng": 124.65683591,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E01-C02",
+          "lat": 8.46600513,
+          "lng": 124.65685656,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E01-C03",
+          "lat": 8.46601734,
+          "lng": 124.65687721,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E01-C04",
+          "lat": 8.46602955,
+          "lng": 124.65689786,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E01-C05",
+          "lat": 8.46604176,
+          "lng": 124.65691851,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E01-C06",
+          "lat": 8.46605397,
+          "lng": 124.65693916,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E01-C07",
+          "lat": 8.46606618,
+          "lng": 124.65695981,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E01-C08",
+          "lat": 8.46607839,
+          "lng": 124.65698046,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E01-C09",
+          "lat": 8.4660906,
+          "lng": 124.65700111,
+          "status": "occupied",
+          "hasGraves": true
+        }
+      ]
+    },
+    "ROW-E02": {
+      "rowKey": "ROW-E02",
+      "plotCount": 12,
+      "centerLat": 8.46598772,
+      "centerLng": 124.65701322,
+      "plots": [
+        {
+          "plotNumber": "ROW-E02-C01",
+          "lat": 8.46590975,
+          "lng": 124.65688888,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E02-C02",
+          "lat": 8.46592393,
+          "lng": 124.65691149,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E02-C03",
+          "lat": 8.4659381,
+          "lng": 124.65693409,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E02-C04",
+          "lat": 8.46595228,
+          "lng": 124.6569567,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E02-C05",
+          "lat": 8.46596646,
+          "lng": 124.65697931,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E02-C06",
+          "lat": 8.46598063,
+          "lng": 124.65700192,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E02-C07",
+          "lat": 8.46599481,
+          "lng": 124.65702452,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E02-C08",
+          "lat": 8.46600898,
+          "lng": 124.65704713,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E02-C09",
+          "lat": 8.46602316,
+          "lng": 124.65706974,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E02-C10",
+          "lat": 8.46603734,
+          "lng": 124.65709235,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E02-C11",
+          "lat": 8.46605151,
+          "lng": 124.65711495,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E02-C12",
+          "lat": 8.46606569,
+          "lng": 124.65713756,
+          "status": "available",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-E03": {
+      "rowKey": "ROW-E03",
+      "plotCount": 15,
+      "centerLat": 8.46592904,
+      "centerLng": 124.65709441,
+      "plots": [
+        {
+          "plotNumber": "ROW-E03-C01",
+          "lat": 8.46582496,
+          "lng": 124.65692583,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E03-C02",
+          "lat": 8.46583983,
+          "lng": 124.65694991,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C03",
+          "lat": 8.4658547,
+          "lng": 124.656974,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C04",
+          "lat": 8.46586956,
+          "lng": 124.65699808,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E03-C05",
+          "lat": 8.46588443,
+          "lng": 124.65702216,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E03-C06",
+          "lat": 8.4658993,
+          "lng": 124.65704624,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C07",
+          "lat": 8.46591417,
+          "lng": 124.65707033,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E03-C08",
+          "lat": 8.46592904,
+          "lng": 124.65709441,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C09",
+          "lat": 8.46594391,
+          "lng": 124.65711849,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E03-C10",
+          "lat": 8.46595878,
+          "lng": 124.65714258,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C11",
+          "lat": 8.46597365,
+          "lng": 124.65716666,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E03-C12",
+          "lat": 8.46598852,
+          "lng": 124.65719074,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C13",
+          "lat": 8.46600338,
+          "lng": 124.65721482,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C14",
+          "lat": 8.46601825,
+          "lng": 124.65723891,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E03-C15",
+          "lat": 8.46603312,
+          "lng": 124.65726299,
+          "status": "available",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-E04": {
+      "rowKey": "ROW-E04",
+      "plotCount": 12,
+      "centerLat": 8.46595015,
+      "centerLng": 124.65730788,
+      "plots": [
+        {
+          "plotNumber": "ROW-E04-C01",
+          "lat": 8.46589037,
+          "lng": 124.65720556,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E04-C02",
+          "lat": 8.46590124,
+          "lng": 124.65722416,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E04-C03",
+          "lat": 8.46591211,
+          "lng": 124.65724276,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E04-C04",
+          "lat": 8.46592298,
+          "lng": 124.65726137,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E04-C05",
+          "lat": 8.46593385,
+          "lng": 124.65727997,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E04-C06",
+          "lat": 8.46594472,
+          "lng": 124.65729858,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E04-C07",
+          "lat": 8.46595558,
+          "lng": 124.65731718,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E04-C08",
+          "lat": 8.46596645,
+          "lng": 124.65733579,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E04-C09",
+          "lat": 8.46597732,
+          "lng": 124.65735439,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E04-C10",
+          "lat": 8.46598819,
+          "lng": 124.657373,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E04-C11",
+          "lat": 8.46599906,
+          "lng": 124.6573916,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E04-C12",
+          "lat": 8.46600993,
+          "lng": 124.6574102,
+          "status": "reserved",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-E05": {
+      "rowKey": "ROW-E05",
+      "plotCount": 12,
+      "centerLat": 8.46587802,
+      "centerLng": 124.65738086,
+      "plots": [
+        {
+          "plotNumber": "ROW-E05-C01",
+          "lat": 8.46580923,
+          "lng": 124.65725877,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E05-C02",
+          "lat": 8.46582174,
+          "lng": 124.65728097,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E05-C03",
+          "lat": 8.46583425,
+          "lng": 124.65730316,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E05-C04",
+          "lat": 8.46584675,
+          "lng": 124.65732536,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E05-C05",
+          "lat": 8.46585926,
+          "lng": 124.65734756,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E05-C06",
+          "lat": 8.46587177,
+          "lng": 124.65736976,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E05-C07",
+          "lat": 8.46588427,
+          "lng": 124.65739196,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E05-C08",
+          "lat": 8.46589678,
+          "lng": 124.65741416,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E05-C09",
+          "lat": 8.46590929,
+          "lng": 124.65743636,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E05-C10",
+          "lat": 8.46592179,
+          "lng": 124.65745856,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E05-C11",
+          "lat": 8.4659343,
+          "lng": 124.65748075,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E05-C12",
+          "lat": 8.46594681,
+          "lng": 124.65750295,
+          "status": "available",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-E06": {
+      "rowKey": "ROW-E06",
+      "plotCount": 8,
+      "centerLat": 8.46579771,
+      "centerLng": 124.6570588,
+      "plots": [
+        {
+          "plotNumber": "ROW-E06-C01",
+          "lat": 8.46575338,
+          "lng": 124.65698729,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E06-C02",
+          "lat": 8.46576605,
+          "lng": 124.65700772,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E06-C03",
+          "lat": 8.46577871,
+          "lng": 124.65702815,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E06-C04",
+          "lat": 8.46579138,
+          "lng": 124.65704858,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E06-C05",
+          "lat": 8.46580404,
+          "lng": 124.65706902,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E06-C06",
+          "lat": 8.46581671,
+          "lng": 124.65708945,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E06-C07",
+          "lat": 8.46582937,
+          "lng": 124.65710988,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E06-C08",
+          "lat": 8.46584204,
+          "lng": 124.65713031,
+          "status": "occupied",
+          "hasGraves": true
+        }
+      ]
+    },
+    "ROW-E07": {
+      "rowKey": "ROW-E07",
+      "plotCount": 9,
+      "centerLat": 8.46572245,
+      "centerLng": 124.6571064,
+      "plots": [
+        {
+          "plotNumber": "ROW-E07-C01",
+          "lat": 8.46567055,
+          "lng": 124.65702331,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E07-C02",
+          "lat": 8.46568352,
+          "lng": 124.65704408,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E07-C03",
+          "lat": 8.4656965,
+          "lng": 124.65706485,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E07-C04",
+          "lat": 8.46570947,
+          "lng": 124.65708563,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E07-C05",
+          "lat": 8.46572245,
+          "lng": 124.6571064,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E07-C06",
+          "lat": 8.46573543,
+          "lng": 124.65712717,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-E07-C07",
+          "lat": 8.4657484,
+          "lng": 124.65714795,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E07-C08",
+          "lat": 8.46576138,
+          "lng": 124.65716872,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-E07-C09",
+          "lat": 8.46577435,
+          "lng": 124.65718949,
+          "status": "reserved",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-W03": {
+      "rowKey": "ROW-W03",
+      "plotCount": 9,
+      "centerLat": 8.46549931,
+      "centerLng": 124.65692294,
+      "plots": [
+        {
+          "plotNumber": "ROW-W03-C01",
+          "lat": 8.46544611,
+          "lng": 124.65683402,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W03-C02",
+          "lat": 8.46545941,
+          "lng": 124.65685625,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W03-C03",
+          "lat": 8.46547271,
+          "lng": 124.65687848,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W03-C04",
+          "lat": 8.46548601,
+          "lng": 124.65690071,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W03-C05",
+          "lat": 8.46549931,
+          "lng": 124.65692294,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W03-C06",
+          "lat": 8.46551261,
+          "lng": 124.65694517,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W03-C07",
+          "lat": 8.46552591,
+          "lng": 124.6569674,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W03-C08",
+          "lat": 8.46553921,
+          "lng": 124.65698963,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W03-C09",
+          "lat": 8.46555251,
+          "lng": 124.65701186,
+          "status": "available",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-W05": {
+      "rowKey": "ROW-W05",
+      "plotCount": 8,
+      "centerLat": 8.46564061,
+      "centerLng": 124.65715176,
+      "plots": [
+        {
+          "plotNumber": "ROW-W05-C01",
+          "lat": 8.46559237,
+          "lng": 124.6570724,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W05-C02",
+          "lat": 8.46560615,
+          "lng": 124.65709507,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W05-C03",
+          "lat": 8.46561994,
+          "lng": 124.65711775,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W05-C04",
+          "lat": 8.46563372,
+          "lng": 124.65714042,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W05-C05",
+          "lat": 8.4656475,
+          "lng": 124.6571631,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W05-C06",
+          "lat": 8.46566128,
+          "lng": 124.65718577,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W05-C07",
+          "lat": 8.46567507,
+          "lng": 124.65720845,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W05-C08",
+          "lat": 8.46568885,
+          "lng": 124.65723112,
+          "status": "available",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-W06": {
+      "rowKey": "ROW-W06",
+      "plotCount": 8,
+      "centerLat": 8.46572832,
+      "centerLng": 124.65677791,
+      "plots": [
+        {
+          "plotNumber": "ROW-W06-C01",
+          "lat": 8.46567876,
+          "lng": 124.65670127,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W06-C02",
+          "lat": 8.46569292,
+          "lng": 124.65672316,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W06-C03",
+          "lat": 8.46570708,
+          "lng": 124.65674506,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W06-C04",
+          "lat": 8.46572124,
+          "lng": 124.65676696,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W06-C05",
+          "lat": 8.4657354,
+          "lng": 124.65678886,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W06-C06",
+          "lat": 8.46574956,
+          "lng": 124.65681076,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W06-C07",
+          "lat": 8.46576372,
+          "lng": 124.65683266,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W06-C08",
+          "lat": 8.46577788,
+          "lng": 124.65685455,
+          "status": "available",
+          "hasGraves": false
+        }
+      ]
+    },
+    "ROW-W07": {
+      "rowKey": "ROW-W07",
+      "plotCount": 8,
+      "centerLat": 8.46565727,
+      "centerLng": 124.65682613,
+      "plots": [
+        {
+          "plotNumber": "ROW-W07-C02",
+          "lat": 8.46562225,
+          "lng": 124.65677114,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W07-C03",
+          "lat": 8.46563626,
+          "lng": 124.65679313,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W07-C04",
+          "lat": 8.46565027,
+          "lng": 124.65681513,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W07-C05",
+          "lat": 8.46566427,
+          "lng": 124.65683713,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W07-C06",
+          "lat": 8.46567828,
+          "lng": 124.65685913,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W07-C07",
+          "lat": 8.46569229,
+          "lng": 124.65688112,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W07-C08",
+          "lat": 8.4657063,
+          "lng": 124.65690312,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "WALAG-001",
+          "lat": 8.46560824,
+          "lng": 124.65674914,
+          "status": "occupied",
+          "hasGraves": true
+        }
+      ]
+    },
+    "ROW-W08": {
+      "rowKey": "ROW-W08",
+      "plotCount": 9,
+      "centerLat": 8.46557751,
+      "centerLng": 124.65687181,
+      "plots": [
+        {
+          "plotNumber": "ROW-W08-C01",
+          "lat": 8.46552347,
+          "lng": 124.6567853,
+          "status": "reserved",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W08-C02",
+          "lat": 8.46553698,
+          "lng": 124.65680693,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W08-C03",
+          "lat": 8.46555049,
+          "lng": 124.65682855,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W08-C04",
+          "lat": 8.465564,
+          "lng": 124.65685018,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W08-C05",
+          "lat": 8.46557751,
+          "lng": 124.65687181,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W08-C06",
+          "lat": 8.46559102,
+          "lng": 124.65689344,
+          "status": "available",
+          "hasGraves": false
+        },
+        {
+          "plotNumber": "ROW-W08-C07",
+          "lat": 8.46560453,
+          "lng": 124.65691507,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W08-C08",
+          "lat": 8.46561804,
+          "lng": 124.65693669,
+          "status": "occupied",
+          "hasGraves": true
+        },
+        {
+          "plotNumber": "ROW-W08-C09",
+          "lat": 8.46563155,
+          "lng": 124.65695832,
+          "status": "occupied",
+          "hasGraves": true
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { smartSearch } from "@/lib/search";
-import { requireRole } from "@/lib/authz";
+import { isAuthorized, requireAuth, requireRole } from "@/lib/authz";
 import {
   validateBody,
   validationErrorResponse,
@@ -69,13 +69,26 @@ const CREATE_GRAVE_SCHEMA = {
   plotId: { required: true, type: "integer" },
 };
 
+// Optional sensitive detail fields accepted on creation. Bounds mirror the
+// PATCH route (graves/[id]) so oversized values cannot bypass validation on the
+// create path.
+const CREATE_GRAVE_DETAILS_SCHEMA = {
+  burialDate: { type: "string", trim: true, max: 40 },
+  causeOfDeath: { type: "string", trim: true, max: 5000 },
+  contactPerson: { type: "string", trim: true, max: 500 },
+  contactPhone: { type: "string", trim: true, max: 100 },
+  notes: { type: "string", trim: true, max: 10000 },
+};
+
 // GET /api/graves — List graves or search
 export async function GET(request) {
   try {
-    // Public path: never reject. We only use the guard result to decide whether
-    // sensitive detail fields may be exposed as decrypted plaintext.
-    const authz = await requireRole(request, "graves");
-    const authorized = authz.ok;
+    // Public path: never reject. We only use the result to decide whether
+    // sensitive detail fields may be exposed as decrypted plaintext. Sensitive
+    // access is the `verify` permission (Admin/Staff), consistent with
+    // /api/plots and the platform's field-level policy.
+    const auth = await requireAuth(request);
+    const authorized = auth.ok && isAuthorized(auth.user.role, "verify");
 
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q")?.trim();
@@ -191,7 +204,21 @@ export async function POST(request) {
       return validationErrorResponse(validation.errors);
     }
     const { deceasedName, plotId } = validation.value;
-    const { burialDate, causeOfDeath, contactPerson, contactPhone, notes, confirm } = body;
+
+    // Validate optional detail fields before they reach encryption/Prisma.
+    const detailValidation = validateBody(body, CREATE_GRAVE_DETAILS_SCHEMA);
+    if (!detailValidation.valid) {
+      return validationErrorResponse(detailValidation.errors);
+    }
+    const { burialDate, causeOfDeath, contactPerson, contactPhone, notes } =
+      detailValidation.value;
+    const { confirm } = body;
+
+    if (burialDate !== undefined && !Number.isFinite(new Date(burialDate).getTime())) {
+      return validationErrorResponse([
+        { field: "burialDate", code: "type", message: "burialDate must be a valid date" },
+      ]);
+    }
 
     // Duplicate gating (Req 4.2–4.5). Run AFTER authz + validation but BEFORE
     // creating the grave. Wrapped in its own try/catch so a detection failure

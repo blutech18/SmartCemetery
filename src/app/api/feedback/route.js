@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth, requireRole } from "@/lib/authz";
 import { validateBody, validationErrorResponse } from "@/lib/validation";
+import { getClientIp, writeAuditLog } from "@/lib/audit";
 
 /**
  * Feedback validation schema (Req 8.2, 8.3, 8.4).
@@ -60,6 +61,14 @@ export async function POST(request) {
         comment: comment ?? null,
       },
       include: { user: { select: { id: true, name: true } } },
+    });
+
+    // Best-effort audit after persistence.
+    await writeAuditLog({
+      userId: auth.user.id,
+      action: "feedback.create",
+      ipAddress: getClientIp(request),
+      details: { feedbackId: feedback.id, rating },
     });
 
     // Confirmation includes the persisted feedback id (Req 8.6).

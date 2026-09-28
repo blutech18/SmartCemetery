@@ -1,6 +1,17 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
+// Safety guard: this script resets EVERY user's password to a known value and
+// clears all rate-limit buckets. Require an explicit opt-in so it can never be
+// run by accident against a real database.
+if (process.env.CONFIRM_RESET_ALL_PASSWORDS !== 'yes') {
+  console.error(
+    'Refusing to run: this resets every user password to a shared known value.\n' +
+      'Re-run with CONFIRM_RESET_ALL_PASSWORDS=yes on a disposable/dev database only.'
+  );
+  process.exit(1);
+}
+
 async function main() {
   const p = new PrismaClient();
   

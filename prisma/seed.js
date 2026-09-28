@@ -259,6 +259,145 @@ async function main() {
   ]);
   console.log("  ✓ 3 sample feedbacks created");
 
+  // 8. Create City Memorial Park (CMP) - Bolonsiri and Apartment Rows from Master Preset
+  console.log("Creating City Memorial Park (CMP) - Bolonsiri and apartment rows from Master Preset...");
+  const preset = require("../src/lib/bolonsori-preset.json");
+  let cmpLocation = await prisma.location.findFirst({
+    where: { name: { contains: "City Memorial Park" } },
+  });
+  if (!cmpLocation) {
+    cmpLocation = await prisma.location.create({
+      data: {
+        name: "City Memorial Park (CMP) - Bolonsiri",
+        description: "Public cemetery redevelopment area featuring multi-tier apartment crypts, administrative offices, and memorial rows in Camaman-an, Cagayan de Oro.",
+        gpsLat: 8.46571,
+        gpsLng: 124.65700,
+      },
+    });
+  }
+
+  const activeRowKeys = Object.keys(preset.rows);
+  let cmpPlotCount = 0;
+  for (let rIdx = 0; rIdx < activeRowKeys.length; rIdx++) {
+    const rowCode = activeRowKeys[rIdx];
+    const rowData = preset.rows[rowCode];
+
+    let sectionDetail = await prisma.locationDetail.findFirst({
+      where: { locationId: cmpLocation.id, subsection: rowCode },
+    });
+    if (!sectionDetail) {
+      sectionDetail = await prisma.locationDetail.create({
+        data: {
+          locationId: cmpLocation.id,
+          subsection: rowCode,
+          capacity: rowData.plotCount * 4,
+          sortOrder: rIdx + 1,
+        },
+      });
+    }
+
+    for (const pDef of rowData.plots) {
+      await prisma.plot.upsert({
+        where: {
+          locationDetailId_plotNumber: {
+            locationDetailId: sectionDetail.id,
+            plotNumber: pDef.plotNumber,
+          },
+        },
+        update: {
+          gpsLat: pDef.lat,
+          gpsLng: pDef.lng,
+          status: pDef.status || "available",
+        },
+        create: {
+          locationDetailId: sectionDetail.id,
+          plotNumber: pDef.plotNumber,
+          status: pDef.status || "available",
+          gpsLat: pDef.lat,
+          gpsLng: pDef.lng,
+        },
+      });
+      cmpPlotCount++;
+    }
+  }
+  console.log(`  ✓ CMP Location and ${cmpPlotCount} preset apartment crypt plots created or verified`);
+
+  const walagPlot = await prisma.plot.findFirst({
+    where: { plotNumber: "WALAG-001" },
+    include: { graves: true },
+  });
+  if (walagPlot && (!walagPlot.graves || walagPlot.graves.length === 0)) {
+    const walagTiers = [
+      {
+        tier: 1,
+        label: "Tier 1 (Ground Level)",
+        deceasedName: "Beatriz Walag",
+        burialDate: "2018-03-20T00:00:00.000Z",
+        deathDate: "2018-03-16",
+        causeOfDeath: "Natural Causes / Old Age (Age: 84)",
+        contactPerson: "Nimfa Walag (Daughter)",
+        contactPhone: "+63 917 555 0192",
+        status: "occupied",
+        notes: "Beloved mother and grandmother. Resting in peace with daughter Nimfa.",
+      },
+      {
+        tier: 2,
+        label: "Tier 2 (Second Level)",
+        deceasedName: "Nimfa Walag",
+        burialDate: "2021-10-14T00:00:00.000Z",
+        deathDate: "2021-10-10",
+        causeOfDeath: "Cardiopulmonary Arrest (Age: 62)",
+        contactPerson: "Roberto Walag (Son)",
+        contactPhone: "+63 918 333 4455",
+        status: "occupied",
+        notes: "Cherished educator, mother, and sister. Forever remembered.",
+      },
+      {
+        tier: 3,
+        label: "Tier 3 (Third Level)",
+        status: "available",
+        notes: "Reserved for family member.",
+      },
+      {
+        tier: 4,
+        label: "Tier 4 (Top Level)",
+        status: "available",
+        notes: "Unoccupied apartment niche crypt.",
+      },
+    ];
+
+    const notesContent = JSON.stringify({
+      type: "apartment_niche_stack",
+      structureName: "Beatriz and Nimfa Walag Grave",
+      totalTiers: 4,
+      occupiedCount: 2,
+      availableCount: 2,
+      tiers: walagTiers,
+    });
+
+    await prisma.grave.create({
+      data: {
+        plotId: walagPlot.id,
+        deceasedName: "Beatriz and Nimfa Walag",
+        burialDate: new Date("2021-10-14"),
+        status: "active",
+        verificationStatus: "verified",
+        verifiedAt: new Date(),
+        verifiedById: users[0].id,
+        verificationNote: "Verified family multi-tier apartment crypt (Beatriz Walag - Tier 1, Nimfa Walag - Tier 2)",
+        details: {
+          create: encryptGraveDetail({
+            causeOfDeath: "Tier 1: Natural Causes | Tier 2: Cardiopulmonary Arrest",
+            contactPerson: "Roberto Walag (Family Representative)",
+            contactPhone: "+63 918 333 4455",
+            notes: notesContent,
+          }),
+        },
+      },
+    });
+    console.log("  ✓ Beatriz and Nimfa Walag multi-tier grave verified");
+  }
+
   console.log("\n✅ Seeding complete. Credentials were sourced from environment variables and were not printed.");
 }
 
