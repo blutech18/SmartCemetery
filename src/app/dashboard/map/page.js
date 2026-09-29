@@ -960,7 +960,7 @@ function MapPageInner() {
         <PlotDetailsDrawer
           plot={detailsPlot}
           allPlots={plots}
-          isOpen={Boolean(!drawerCollapsed && !pending && !editing && !adjustMode)}
+          isOpen={Boolean(!pending && !editing && !adjustMode)}
           isCollapsed={drawerCollapsed}
           onToggleCollapse={() => setDrawerCollapsed((prev) => !prev)}
           onClose={() => {

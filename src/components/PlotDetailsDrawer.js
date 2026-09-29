@@ -291,7 +291,7 @@ export default function PlotDetailsDrawer({
         bottom: 0,
         width: isCollapsed ? 0 : "min(410px, 94vw)",
         zIndex: 500,
-        pointerEvents: isCollapsed ? "none" : "auto",
+        pointerEvents: !isOpen ? "none" : "auto",
         transition: "transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s ease",
         transform: isOpen ? "translateX(0)" : "translateX(-100%)",
         display: "flex",
@@ -299,16 +299,19 @@ export default function PlotDetailsDrawer({
     >
       {/* Main Drawer Panel */}
       <div
+        aria-hidden={isCollapsed ? true : undefined}
+        inert={isCollapsed ? true : undefined}
         style={{
           width: "100%",
           height: "100%",
           background: isLight ? "#ffffff" : "rgba(15, 23, 42, 0.98)",
-          borderRight: isLight ? "1px solid #e5e7eb" : "1px solid rgba(255, 255, 255, 0.12)",
-          boxShadow: isLight ? "8px 0 28px rgba(0, 0, 0, 0.08)" : "8px 0 32px rgba(0, 0, 0, 0.55)",
+          borderRight: isCollapsed ? "none" : isLight ? "1px solid #e5e7eb" : "1px solid rgba(255, 255, 255, 0.12)",
+          boxShadow: isCollapsed ? "none" : isLight ? "8px 0 28px rgba(0, 0, 0, 0.08)" : "8px 0 32px rgba(0, 0, 0, 0.55)",
           display: "flex",
           flexDirection: "column",
           color: isLight ? "#111827" : "#f8fafc",
           overflow: "hidden",
+          pointerEvents: isCollapsed ? "none" : "auto",
         }}
       >
         {/* Top Header: Selected Name Banner OR Search Bar when no plot is selected */}
@@ -1164,15 +1167,21 @@ export default function PlotDetailsDrawer({
       {/* Collapse / Expand Toggle Button Tab (< / >) */}
       <button
         type="button"
-        onClick={onToggleCollapse}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (typeof onToggleCollapse === "function") {
+            onToggleCollapse();
+          }
+        }}
         title={isCollapsed ? "Expand Details Drawer" : "Collapse Drawer"}
+        aria-label={isCollapsed ? "Expand Details Drawer" : "Collapse Drawer"}
         style={{
           position: "absolute",
           top: "50%",
-          right: -24,
+          right: -28,
           transform: "translateY(-50%)",
-          width: 24,
-          height: 52,
+          width: 28,
+          height: 56,
           background: isLight ? "#ffffff" : "rgba(15, 23, 42, 0.95)",
           borderTop: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
           borderRight: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
@@ -1185,16 +1194,17 @@ export default function PlotDetailsDrawer({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          boxShadow: isLight ? "4px 0 16px rgba(0,0,0,0.08)" : "4px 0 16px rgba(0,0,0,0.4)",
+          boxShadow: isLight ? "4px 0 16px rgba(0,0,0,0.12)" : "4px 0 16px rgba(0,0,0,0.5)",
           pointerEvents: "auto",
-          transition: "all 0.2s ease",
+          zIndex: 520,
+          transition: "background 0.2s ease, transform 0.2s ease",
         }}
         onMouseEnter={(e) => (e.currentTarget.style.background = isLight ? "#f1f5f9" : "#1e293b")}
         onMouseLeave={(e) =>
           (e.currentTarget.style.background = isLight ? "#ffffff" : "rgba(15, 23, 42, 0.95)")
         }
       >
-        {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
       </button>
 
       {/* ─── Change Photo Modal ─── */}
