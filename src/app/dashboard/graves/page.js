@@ -13,6 +13,8 @@ import { getGravePhoto } from "@/lib/plot-format";
 const EMPTY_FORM = {
   deceasedName: "",
   plotId: "",
+  dateOfBirth: "",
+  dateOfDeath: "",
   burialDate: "",
   causeOfDeath: "",
   contactPerson: "",
@@ -36,6 +38,7 @@ export default function GravesPage() {
   const isClient = useIsClient();
   useBodyScrollLock(showModal);
   const [editingId, setEditingId] = useState(null);
+  const [editingGrave, setEditingGrave] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [plots, setPlots] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
@@ -106,23 +109,51 @@ export default function GravesPage() {
     setSubmitting(true);
     try {
       const cleanedNotes = form.notes.trim();
+      const birthDateVal = form.dateOfBirth ? form.dateOfBirth.trim() : null;
+      const deathDateVal = form.dateOfDeath ? form.dateOfDeath.trim() : null;
       let savedNotes = cleanedNotes || null;
+
       if (editingId) {
-        const existing = displayGraves.find((g) => g.id === editingId);
+        const existing = editingGrave || displayGraves.find((g) => g.id === editingId) || graves.find((g) => g.id === editingId);
         if (existing?.details?.notes) {
           try {
             const parsed = JSON.parse(existing.details.notes);
             if (parsed && typeof parsed === "object") {
               parsed.text = cleanedNotes || undefined;
+              if (birthDateVal) {
+                parsed.birthDate = birthDateVal;
+              } else {
+                delete parsed.birthDate;
+                delete parsed.dateOfBirth;
+              }
+              if (deathDateVal) {
+                parsed.deathDate = deathDateVal;
+              } else {
+                delete parsed.deathDate;
+                delete parsed.dateOfDeath;
+              }
+
               if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
                 const matchingTier = parsed.tiers.find((t) => t.deceasedName === form.deceasedName) || parsed.tiers[0];
                 if (matchingTier) {
                   matchingTier.notes = cleanedNotes || undefined;
+                  if (birthDateVal) {
+                    matchingTier.birthDate = birthDateVal;
+                  } else {
+                    delete matchingTier.birthDate;
+                    delete matchingTier.dateOfBirth;
+                  }
+                  if (deathDateVal) {
+                    matchingTier.deathDate = deathDateVal;
+                  } else {
+                    delete matchingTier.deathDate;
+                    delete matchingTier.dateOfDeath;
+                  }
                 }
               }
               if (!photoFile && form.photo !== undefined) {
                 parsed.photo = form.photo || null;
-                const matchingTier = parsed.tiers.find((t) => t.deceasedName === form.deceasedName) || parsed.tiers[0];
+                const matchingTier = parsed.tiers?.find((t) => t.deceasedName === form.deceasedName) || parsed.tiers?.[0];
                 if (matchingTier) {
                   matchingTier.photo = form.photo || null;
                 }
@@ -130,18 +161,30 @@ export default function GravesPage() {
               savedNotes = JSON.stringify(parsed);
             }
           } catch {
-            // raw string notes
+            // raw string notes was previously stored
+            if (birthDateVal || deathDateVal || (!photoFile && form.photo)) {
+              savedNotes = JSON.stringify({
+                text: cleanedNotes || undefined,
+                birthDate: birthDateVal || undefined,
+                deathDate: deathDateVal || undefined,
+                photo: (!photoFile && form.photo) || undefined,
+              });
+            }
           }
-        } else if (!photoFile && form.photo) {
+        } else if (birthDateVal || deathDateVal || (!photoFile && form.photo)) {
           savedNotes = JSON.stringify({
-            photo: form.photo,
-            text: cleanedNotes,
+            text: cleanedNotes || undefined,
+            birthDate: birthDateVal || undefined,
+            deathDate: deathDateVal || undefined,
+            photo: (!photoFile && form.photo) || undefined,
           });
         }
-      } else if (!photoFile && form.photo) {
+      } else if (birthDateVal || deathDateVal || (!photoFile && form.photo)) {
         savedNotes = JSON.stringify({
-          photo: form.photo,
-          text: cleanedNotes,
+          text: cleanedNotes || undefined,
+          birthDate: birthDateVal || undefined,
+          deathDate: deathDateVal || undefined,
+          photo: (!photoFile && form.photo) || undefined,
         });
       }
 
@@ -199,6 +242,7 @@ export default function GravesPage() {
 
       setShowModal(false);
       setEditingId(null);
+      setEditingGrave(null);
       setForm(EMPTY_FORM);
       setPhotoFile(null);
       setPhotoPreview(null);
@@ -213,6 +257,7 @@ export default function GravesPage() {
 
   function openCreate() {
     setEditingId(null);
+    setEditingGrave(null);
     setForm(EMPTY_FORM);
     setInitialPhoto("");
     setPhotoFile(null);
@@ -222,17 +267,24 @@ export default function GravesPage() {
 
   function openEdit(grave) {
     setEditingId(grave.id);
+    setEditingGrave(grave);
     const photo = getGravePhoto(grave) || "";
     let rawNotes = grave.details?.notes || "";
     let textNotes = rawNotes;
+    let birthDate = "";
+    let deathDate = "";
     try {
       const parsed = JSON.parse(rawNotes);
       if (parsed && typeof parsed === "object") {
         if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
           const matchingTier = parsed.tiers.find((t) => t.deceasedName === grave.deceasedName) || parsed.tiers[0];
           textNotes = parsed.text || parsed.notes || matchingTier?.notes || "";
+          birthDate = matchingTier?.birthDate || matchingTier?.dateOfBirth || parsed.birthDate || parsed.dateOfBirth || "";
+          deathDate = matchingTier?.deathDate || matchingTier?.dateOfDeath || parsed.deathDate || parsed.dateOfDeath || "";
         } else {
           textNotes = parsed.text || parsed.notes || "";
+          birthDate = parsed.birthDate || parsed.dateOfBirth || "";
+          deathDate = parsed.deathDate || parsed.dateOfDeath || "";
         }
       }
     } catch {
@@ -242,10 +294,25 @@ export default function GravesPage() {
       }
     }
 
+    const formatDateForInput = (val) => {
+      if (!val) return "";
+      try {
+        const d = new Date(val);
+        if (!Number.isNaN(d.getTime())) {
+          return d.toISOString().slice(0, 10);
+        }
+      } catch {
+        // fallback
+      }
+      return String(val).slice(0, 10);
+    };
+
     setForm({
       deceasedName: grave.deceasedName || "",
       plotId: String(grave.plotId || ""),
-      burialDate: grave.burialDate ? new Date(grave.burialDate).toISOString().slice(0, 10) : "",
+      dateOfBirth: formatDateForInput(birthDate),
+      dateOfDeath: formatDateForInput(deathDate),
+      burialDate: formatDateForInput(grave.burialDate),
       causeOfDeath: grave.details?.causeOfDeath || "",
       contactPerson: grave.details?.contactPerson || "",
       contactPhone: grave.details?.contactPhone || "",
@@ -526,7 +593,7 @@ export default function GravesPage() {
       {/* Add/Edit Grave Modal */}
       {showModal && isAdmin && isClient && createPortal(
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: "560px" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingId ? "Edit Grave Record" : "Add Grave Record"}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>
@@ -545,28 +612,54 @@ export default function GravesPage() {
                   id="grave-form-name"
                 />
               </div>
+
+              <div className="form-group">
+                <label className="form-label">Plot *</label>
+                <select
+                  className="form-select"
+                  value={form.plotId}
+                  onChange={(e) => setForm({ ...form, plotId: e.target.value })}
+                  required
+                  id="grave-form-plot"
+                >
+                  <option value="">Select plot...</option>
+                  {editingId && form.plotId && !plots.some((p) => String(p.id) === form.plotId) && (() => {
+                    const current = (editingGrave || displayGraves.find((grave) => grave.id === editingId))?.plot;
+                    return <option value={form.plotId}>{current?.plotNumber || `Plot ${form.plotId}`} — current assignment</option>;
+                  })()}
+                  {plots.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.plotNumber} — {p.locationDetail?.location?.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Life & Interred Dates */}
               <div className="grid grid-2">
                 <div className="form-group">
-                  <label className="form-label">Plot *</label>
-                  <select
-                    className="form-select"
-                    value={form.plotId}
-                    onChange={(e) => setForm({ ...form, plotId: e.target.value })}
-                    required
-                    id="grave-form-plot"
-                  >
-                    <option value="">Select plot...</option>
-                    {editingId && form.plotId && !plots.some((p) => String(p.id) === form.plotId) && (() => {
-                      const current = displayGraves.find((grave) => grave.id === editingId)?.plot;
-                      return <option value={form.plotId}>{current?.plotNumber || `Plot ${form.plotId}`} — current assignment</option>;
-                    })()}
-                    {plots.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.plotNumber} — {p.locationDetail?.location?.name}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="form-label">Date of Birth</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={form.dateOfBirth}
+                    onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+                    id="grave-form-dob"
+                  />
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Date of Death</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={form.dateOfDeath}
+                    onChange={(e) => setForm({ ...form, dateOfDeath: e.target.value })}
+                    id="grave-form-dod"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-2">
                 <div className="form-group">
                   <label className="form-label">Burial Date</label>
                   <input
@@ -577,16 +670,18 @@ export default function GravesPage() {
                     id="grave-form-date"
                   />
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Cause of Death</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={form.causeOfDeath}
+                    onChange={(e) => setForm({ ...form, causeOfDeath: e.target.value })}
+                    placeholder="e.g. Natural Causes, Cardiac Arrest"
+                  />
+                </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Cause of Death</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={form.causeOfDeath}
-                  onChange={(e) => setForm({ ...form, causeOfDeath: e.target.value })}
-                />
-              </div>
+
               <div className="grid grid-2">
                 <div className="form-group">
                   <label className="form-label">Contact Person</label>
@@ -595,6 +690,7 @@ export default function GravesPage() {
                     className="form-input"
                     value={form.contactPerson}
                     onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+                    placeholder="Family member / next of kin"
                   />
                 </div>
                 <div className="form-group">
@@ -604,6 +700,7 @@ export default function GravesPage() {
                     className="form-input"
                     value={form.contactPhone}
                     onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+                    placeholder="e.g. +63 917 555 0192"
                   />
                 </div>
               </div>

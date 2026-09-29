@@ -126,4 +126,61 @@ describe("plot-format", () => {
       })
     ).toBe("/uploads/graves/tier1.jpg");
   });
+
+  it("extracts birthDate and deathDate across apartment niche stacks and single plots", () => {
+    // Single traditional plot
+    const singlePlot = {
+      plotNumber: "GR-001",
+      status: "occupied",
+      graves: [
+        {
+          id: 10,
+          deceasedName: "John Doe",
+          burialDate: "2021-05-10",
+          details: {
+            notes: JSON.stringify({
+              birthDate: "1940-02-15",
+              deathDate: "2021-05-01",
+              text: "Beloved father",
+            }),
+          },
+        },
+      ],
+    };
+    const singleTiers = extractPlotTiers(singlePlot);
+    expect(singleTiers).toHaveLength(1);
+    expect(singleTiers[0].birthDate).toBe("1940-02-15");
+    expect(singleTiers[0].deathDate).toBe("2021-05-01");
+    expect(formatPlotDate(singleTiers[0].birthDate)).toBe("February 15th, 1940");
+    expect(formatPlotDate(singleTiers[0].deathDate)).toBe("May 1st, 2021");
+
+    // Apartment stack
+    const stackPlot = {
+      plotNumber: "ROW-W08-C09",
+      graves: [
+        {
+          id: 157,
+          deceasedName: "Nimfa Walag",
+          details: {
+            notes: JSON.stringify({
+              type: "apartment_niche_stack",
+              tiers: [
+                {
+                  tier: 1,
+                  deceasedName: "Nimfa Walag",
+                  birthDate: "1959-05-12",
+                  deathDate: "2021-10-10",
+                  status: "occupied",
+                },
+                { tier: 2, status: "available" },
+              ],
+            }),
+          },
+        },
+      ],
+    };
+    const stackTiers = extractPlotTiers(stackPlot);
+    expect(stackTiers[0].birthDate).toBe("1959-05-12");
+    expect(stackTiers[0].deathDate).toBe("2021-10-10");
+  });
 });

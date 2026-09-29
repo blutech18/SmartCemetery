@@ -779,12 +779,12 @@ export default function PlotDetailsDrawer({
                 <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: "8px 12px", fontSize: "0.84rem" }}>
                   <span style={{ color: isLight ? "#6b7280" : "#94a3b8" }}>Date of Birth:</span>
                   <span style={{ color: isLight ? "#111827" : "#e2e8f0", textAlign: "right" }}>
-                    {currentTier?.birthDate ? formatPlotDate(currentTier.birthDate) : "—"}
+                    {(currentTier?.birthDate || currentTier?.dateOfBirth) ? formatPlotDate(currentTier.birthDate || currentTier.dateOfBirth) : "—"}
                   </span>
 
                   <span style={{ color: isLight ? "#6b7280" : "#94a3b8" }}>Date of Death:</span>
                   <span style={{ color: isLight ? "#111827" : "#e2e8f0", textAlign: "right" }}>
-                    {currentTier?.deathDate ? formatPlotDate(currentTier.deathDate) : "—"}
+                    {(currentTier?.deathDate || currentTier?.dateOfDeath) ? formatPlotDate(currentTier.deathDate || currentTier.dateOfDeath) : "—"}
                   </span>
 
                   <span style={{ color: isLight ? "#6b7280" : "#94a3b8" }}>Date of Burial:</span>

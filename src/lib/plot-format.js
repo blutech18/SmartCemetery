@@ -74,6 +74,8 @@ export function extractPlotTiers(plot) {
       if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
         return parsed.tiers.map((t) => ({
           ...t,
+          birthDate: t.birthDate || t.dateOfBirth || parsed.birthDate || parsed.dateOfBirth || null,
+          deathDate: t.deathDate || t.dateOfDeath || parsed.deathDate || parsed.dateOfDeath || null,
           photo: t.photo || parsed.photo || null,
           notes: t.notes || parsed.text || parsed.notes || null,
         }));
@@ -88,10 +90,14 @@ export function extractPlotTiers(plot) {
     return plot.graves.map((g, idx) => {
       let notesText = g.details?.notes;
       const photo = getGravePhoto(g);
+      let birthDate = null;
+      let deathDate = null;
       if (notesText) {
         try {
           const parsed = JSON.parse(notesText);
           notesText = parsed.text || parsed.notes || null;
+          birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
+          deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
         } catch {
           // plain text notes
         }
@@ -100,6 +106,8 @@ export function extractPlotTiers(plot) {
         tier: idx + 1,
         label: `Tier ${idx + 1}`,
         deceasedName: g.deceasedName,
+        birthDate,
+        deathDate,
         burialDate: g.burialDate,
         status: g.status === "active" ? "occupied" : g.status || "occupied",
         causeOfDeath: g.details?.causeOfDeath,
@@ -119,10 +127,14 @@ export function extractPlotTiers(plot) {
     const primaryGrave = plot.graves?.[0];
     const structurePhoto = getGravePhoto(primaryGrave) || plot.photo || null;
     let notesText = primaryGrave?.details?.notes;
+    let birthDate = null;
+    let deathDate = null;
     if (notesText) {
       try {
         const parsed = JSON.parse(notesText);
         notesText = parsed.text || parsed.notes || null;
+        birthDate = parsed.birthDate || parsed.dateOfBirth || primaryGrave.birthDate || primaryGrave.details?.birthDate || null;
+        deathDate = parsed.deathDate || parsed.dateOfDeath || primaryGrave.deathDate || primaryGrave.details?.deathDate || null;
       } catch {
         // plain text notes
       }
@@ -140,6 +152,8 @@ export function extractPlotTiers(plot) {
         tier: 1,
         label: "Tier 1 (Ground Level)",
         deceasedName: hasOccupant ? primaryGrave.deceasedName : null,
+        birthDate: hasOccupant ? birthDate : null,
+        deathDate: hasOccupant ? deathDate : null,
         burialDate: hasOccupant ? primaryGrave.burialDate : null,
         causeOfDeath: primaryGrave?.details?.causeOfDeath || null,
         contactPerson: primaryGrave?.details?.contactPerson || null,
@@ -155,11 +169,15 @@ export function extractPlotTiers(plot) {
     const g = plot.graves[0];
     let photo = g.photo || null;
     let notesText = g.details?.notes;
+    let birthDate = null;
+    let deathDate = null;
     if (notesText) {
       try {
         const parsed = JSON.parse(notesText);
         if (parsed.photo) photo = parsed.photo;
         notesText = parsed.text || parsed.notes || null;
+        birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
+        deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
       } catch {
         // plain text notes
       }
@@ -169,6 +187,8 @@ export function extractPlotTiers(plot) {
         tier: 1,
         label: "Ground Burial Lot",
         deceasedName: g.deceasedName,
+        birthDate,
+        deathDate,
         burialDate: g.burialDate,
         causeOfDeath: g.details?.causeOfDeath,
         contactPerson: g.details?.contactPerson,
