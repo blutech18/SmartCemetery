@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   CheckCircle,
   ClipboardCheck,
-  RotateCcw,
   XCircle,
   Clock,
   ShieldAlert,
@@ -68,6 +67,18 @@ function getLocationName(record) {
     return sub ? `${loc} / ${sub}` : loc;
   }
   return "—";
+}
+
+/** Maps API field names returned by /api/graves/incomplete to readable badge labels. */
+const MISSING_FIELD_LABELS = {
+  deceasedName: "Deceased Name",
+  burialDate: "Burial Date",
+  plotId: "Plot Assignment",
+  plotGps: "Plot GPS",
+};
+
+function formatMissingField(field) {
+  return MISSING_FIELD_LABELS[field] ?? field;
 }
 
 export default function VerificationPage() {
@@ -312,7 +323,7 @@ export default function VerificationPage() {
                   <th>Plot</th>
                   <th>Location</th>
                   <th>Burial Date</th>
-                  <th style={{ textAlign: "right", minWidth: "160px" }}>Actions</th>
+                  <th style={{ textAlign: "center", minWidth: "160px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -352,7 +363,7 @@ export default function VerificationPage() {
                       <div
                         className="flex action-buttons"
                         style={{
-                          justifyContent: "flex-end",
+                          justifyContent: "center",
                           alignItems: "center",
                           gap: "0.4rem",
                         }}
@@ -424,8 +435,8 @@ export default function VerificationPage() {
                   <th>Deceased Name</th>
                   <th>Plot</th>
                   <th>Burial Date</th>
-                  <th>Missing Requirements</th>
-                  <th style={{ textAlign: "right", minWidth: "180px" }}>Actions</th>
+                  <th style={{ textAlign: "center" }}>Missing Requirements</th>
+                  <th style={{ textAlign: "center", minWidth: "160px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -448,10 +459,13 @@ export default function VerificationPage() {
                     </td>
                     <td className="text-sm">{formatDate(record.burialDate)}</td>
                     <td>
-                      <div className="flex gap-xs" style={{ flexWrap: "wrap" }}>
+                      <div
+                        className="flex gap-xs"
+                        style={{ flexWrap: "wrap", justifyContent: "center" }}
+                      >
                         {(record.missing || []).map((field) => (
                           <span key={field} className="badge badge-danger">
-                            {field}
+                            {formatMissingField(field)}
                           </span>
                         ))}
                       </div>
@@ -460,7 +474,7 @@ export default function VerificationPage() {
                       <div
                         className="flex action-buttons"
                         style={{
-                          justifyContent: "flex-end",
+                          justifyContent: "center",
                           alignItems: "center",
                           gap: "0.35rem",
                         }}
@@ -501,22 +515,6 @@ export default function VerificationPage() {
                         >
                           <XCircle size={14} />
                           <span>Reject</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          disabled={workingId === record.id}
-                          onClick={() => updateVerification(record, "pending")}
-                          title="Keep pending"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "0.3rem",
-                            padding: "0.35rem 0.55rem",
-                            fontSize: "0.8rem",
-                          }}
-                        >
-                          <RotateCcw size={14} />
                         </button>
                       </div>
                     </td>
@@ -609,16 +607,6 @@ export default function VerificationPage() {
                       {selectedRecord.details.contactPerson}
                       {selectedRecord.details?.contactPhone &&
                         ` (${selectedRecord.details.contactPhone})`}
-                    </span>
-                  </div>
-                )}
-                {selectedRecord.details?.notes && (
-                  <div style={{ gridColumn: "span 2" }}>
-                    <span className="text-muted" style={{ fontSize: "0.75rem", display: "block" }}>
-                      Memorial Notes
-                    </span>
-                    <span style={{ whiteSpace: "pre-wrap" }}>
-                      {selectedRecord.details.notes}
                     </span>
                   </div>
                 )}
