@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
-import { Search, Archive, Pencil, Trash2, Camera, Upload } from "lucide-react";
+import { Search, Archive, Pencil, Trash2, Camera, Upload, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
@@ -21,11 +21,13 @@ const EMPTY_FORM = {
   contactPhone: "",
   notes: "",
   photo: "",
+  verificationStatus: "pending",
 };
 
 export default function GravesPage() {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "Admin";
+  const canVerify = session?.user?.role === "Admin" || session?.user?.role === "Staff";
   const [graves, setGraves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -42,7 +44,9 @@ export default function GravesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [plots, setPlots] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [verificationFilter, setVerificationFilter] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [verifyingId, setVerifyingId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [photoFile, setPhotoFile] = useState(null);
@@ -57,6 +61,7 @@ export default function GravesPage() {
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
+      if (verificationFilter) params.set("verificationStatus", verificationFilter);
       params.set("page", currentPage);
       params.set("limit", pageSize);
       const res = await fetch(`/api/graves?${params}`);
@@ -69,7 +74,7 @@ export default function GravesPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, currentPage, searchQuery]);
+  }, [statusFilter, verificationFilter, currentPage, searchQuery]);
 
   const fetchPlots = useCallback(async () => {
     try {
@@ -80,6 +85,29 @@ export default function GravesPage() {
       console.error(err);
     }
   }, []);
+
+  async function handleQuickVerify(grave, status = "verified") {
+    setVerifyingId(grave.id);
+    try {
+      const res = await fetch(`/api/graves/${grave.id}/verify`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const missing = data.missing?.length ? ` Missing: ${data.missing.join(", ")}.` : "";
+        toast.error(`${data.error?.message || data.error || "Verification failed"}.${missing}`);
+        return;
+      }
+      toast.success(`Record for ${grave.deceasedName} marked as ${status}`);
+      await fetchGraves();
+    } catch {
+      toast.error("Failed to update verification status");
+    } finally {
+      setVerifyingId(null);
+    }
+  }
 
   useEffect(() => {
     void Promise.resolve().then(() => Promise.all([fetchGraves(), fetchPlots()]));
@@ -210,7 +238,27 @@ export default function GravesPage() {
       }
 
       const resData = await res.json();
-      const targetGraveId = editingId || resData.grave?.id;
+      const targetGraveId = editingId || resData.id || resData.grave?.id;
+
+      if (form.verificationStatus && targetGraveId) {
+        const prevStatus = editingGrave?.verificationStatus || "pending";
+        if (form.verificationStatus !== prevStatus) {
+          try {
+            const verifyRes = await fetch(`/api/graves/${targetGraveId}/verify`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: form.verificationStatus }),
+            });
+            if (!verifyRes.ok) {
+              const verifyErr = await verifyRes.json();
+              const missing = verifyErr.missing?.length ? ` Missing: ${verifyErr.missing.join(", ")}.` : "";
+              toast.error(`Verification warning: ${verifyErr.error || "Cannot verify"}.${missing}`);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
 
       if (targetGraveId && photoFile) {
         const formData = new FormData();
@@ -318,6 +366,7 @@ export default function GravesPage() {
       contactPhone: grave.details?.contactPhone || "",
       notes: textNotes,
       photo: photo,
+      verificationStatus: grave.verificationStatus || "pending",
     });
     setInitialPhoto(photo);
     setPhotoFile(null);
@@ -401,6 +450,18 @@ export default function GravesPage() {
           <option value="active">Active</option>
           <option value="archived">Archived</option>
         </select>
+        <select
+          className="form-select"
+          value={verificationFilter}
+          onChange={(e) => setVerificationFilter(e.target.value)}
+          style={{ width: 175 }}
+          id="grave-verification-filter"
+        >
+          <option value="">All Verification</option>
+          <option value="pending">Pending</option>
+          <option value="verified">Verified</option>
+          <option value="rejected">Rejected</option>
+        </select>
         {searchResults && (
           <button
             className="btn btn-ghost"
@@ -434,7 +495,7 @@ export default function GravesPage() {
                 <th>Location</th>
                 <th>Status</th>
                 <th>Verification</th>
-                {isAdmin && <th>Actions</th>}
+                {(isAdmin || canVerify) && <th>Actions</th>}
                 {searchResults?.suggestions?.length > 0 && <th>Match</th>}
               </tr>
             </thead>
@@ -515,15 +576,32 @@ export default function GravesPage() {
                       {grave.verificationStatus || "pending"}
                     </span>
                   </td>
-                  {isAdmin && (
+                  {(isAdmin || canVerify) && (
                     <td>
-                      <div className="flex action-buttons">
-                        <button className="action-btn" onClick={() => openEdit(grave)} title={`Edit ${grave.deceasedName}`} aria-label={`Edit ${grave.deceasedName}`}>
-                          <Pencil size={16} />
-                        </button>
-                        <button className="action-btn danger-icon" onClick={() => setPendingDelete(grave)} title={`Delete ${grave.deceasedName}`} aria-label={`Delete ${grave.deceasedName}`}>
-                          <Trash2 size={16} />
-                        </button>
+                      <div className="flex action-buttons" style={{ alignItems: "center", gap: "0.35rem" }}>
+                        {canVerify && grave.verificationStatus !== "verified" && (
+                          <button
+                            type="button"
+                            className="action-btn"
+                            onClick={() => handleQuickVerify(grave, "verified")}
+                            title={`Verify ${grave.deceasedName}`}
+                            aria-label={`Verify ${grave.deceasedName}`}
+                            disabled={verifyingId === grave.id}
+                            style={{ color: "var(--success, #10b981)" }}
+                          >
+                            <CheckCircle size={16} />
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <>
+                            <button className="action-btn" onClick={() => openEdit(grave)} title={`Edit ${grave.deceasedName}`} aria-label={`Edit ${grave.deceasedName}`}>
+                              <Pencil size={16} />
+                            </button>
+                            <button className="action-btn danger-icon" onClick={() => setPendingDelete(grave)} title={`Delete ${grave.deceasedName}`} aria-label={`Delete ${grave.deceasedName}`}>
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   )}
@@ -834,6 +912,21 @@ export default function GravesPage() {
                         </span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Verification Status */}
+                  <div className="form-group" style={{ marginBottom: "0.2rem" }}>
+                    <label className="form-label" style={{ marginBottom: "0.25rem" }}>Verification Status</label>
+                    <select
+                      className="form-select"
+                      value={form.verificationStatus || "pending"}
+                      onChange={(e) => setForm({ ...form, verificationStatus: e.target.value })}
+                      id="grave-form-verification-status"
+                    >
+                      <option value="pending">Pending Review</option>
+                      <option value="verified">Verified (Approved)</option>
+                      <option value="rejected">Rejected (Needs Correction)</option>
+                    </select>
                   </div>
 
                   {/* Notes */}

@@ -93,6 +93,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q")?.trim();
     const status = searchParams.get("status");
+    const verificationStatus = searchParams.get("verificationStatus");
     const parsedPage = Number.parseInt(searchParams.get("page") || "1", 10);
     const parsedLimit = Number.parseInt(searchParams.get("limit") || "20", 10);
     const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
@@ -146,6 +147,7 @@ export async function GET(request) {
     // List mode with pagination
     const where = {};
     if (status) where.status = status;
+    if (verificationStatus) where.verificationStatus = verificationStatus;
 
     const [graves, total] = await Promise.all([
       prisma.grave.findMany({
