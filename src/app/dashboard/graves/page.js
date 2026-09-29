@@ -122,6 +122,10 @@ export default function GravesPage() {
               }
               if (!photoFile && form.photo !== undefined) {
                 parsed.photo = form.photo || null;
+                const matchingTier = parsed.tiers.find((t) => t.deceasedName === form.deceasedName) || parsed.tiers[0];
+                if (matchingTier) {
+                  matchingTier.photo = form.photo || null;
+                }
               }
               savedNotes = JSON.stringify(parsed);
             }
@@ -168,6 +172,7 @@ export default function GravesPage() {
       if (targetGraveId && photoFile) {
         const formData = new FormData();
         formData.append("file", photoFile);
+        formData.append("applyToAll", "true");
         try {
           const photoRes = await fetch(`/api/graves/${targetGraveId}/photo`, {
             method: "POST",
@@ -185,7 +190,7 @@ export default function GravesPage() {
           await fetch(`/api/graves/${targetGraveId}/photo`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ photoUrl: form.photo || "reset" }),
+            body: JSON.stringify({ photoUrl: form.photo || "reset", applyToAll: true }),
           });
         } catch {
           // ignore
@@ -604,10 +609,19 @@ export default function GravesPage() {
               </div>
               {/* Profile Photo */}
               <div className="form-group" style={{ marginBottom: "0.25rem" }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: "0.25rem" }}>
-                  <label className="form-label" style={{ margin: 0 }}>Profile Photo</label>
-                  <span className="text-xs text-muted" style={{ fontWeight: 400, textTransform: "none" }}>
-                    Optional headstone or portrait
+                <div className="flex items-center justify-between" style={{ marginBottom: "0.35rem" }}>
+                  <label className="form-label" style={{ margin: 0 }}>Profile / Headstone Photo</label>
+                  <span
+                    style={{
+                      fontSize: "0.72rem",
+                      fontWeight: 600,
+                      padding: "0.15rem 0.55rem",
+                      borderRadius: "12px",
+                      background: "rgba(2, 132, 199, 0.1)",
+                      color: "var(--primary-color, #0284c7)",
+                    }}
+                  >
+                    Recommended: Landscape (16:9)
                   </span>
                 </div>
 
@@ -620,15 +634,16 @@ export default function GravesPage() {
                     borderRadius: "var(--radius-md, 8px)",
                     border: "1px solid var(--border-default, #e2e8f0)",
                     background: "var(--bg-glass, rgba(241, 245, 249, 0.45))",
-                    minHeight: "90px",
+                    minHeight: "92px",
                   }}
                 >
-                  {/* Photo Preview Frame - Fills section height cleanly */}
+                  {/* Photo Preview Frame - Landscape (16:9) matching map side panel banner */}
                   <div
                     style={{
                       position: "relative",
-                      width: 76,
-                      height: 76,
+                      width: 140,
+                      height: 78,
+                      aspectRatio: "16 / 9",
                       borderRadius: "var(--radius-md, 8px)",
                       border: "1.5px solid var(--border-hover, #cbd5e1)",
                       overflow: "hidden",
@@ -644,7 +659,7 @@ export default function GravesPage() {
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={photoPreview}
-                        alt="Grave preview"
+                        alt="Grave preview (16:9 landscape)"
                         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         onError={(e) => {
                           e.currentTarget.onerror = null;
@@ -652,12 +667,15 @@ export default function GravesPage() {
                         }}
                       />
                     ) : (
-                      <Camera size={26} className="text-muted" style={{ opacity: 0.55 }} />
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem", color: "var(--text-muted)" }}>
+                        <Camera size={22} style={{ opacity: 0.55 }} />
+                        <span style={{ fontSize: "0.65rem", fontWeight: 600, opacity: 0.75 }}>16:9 Landscape</span>
+                      </div>
                     )}
                   </div>
 
                   {/* Actions & Format Hint */}
-                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.5rem" }}>
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.45rem" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <label
                         className="btn btn-secondary btn-sm"
@@ -719,8 +737,8 @@ export default function GravesPage() {
                       )}
                     </div>
 
-                    <span className="text-xs text-muted" style={{ fontSize: "0.75rem" }}>
-                      JPG, PNG, or WebP (Max 5MB)
+                    <span className="text-xs text-muted" style={{ fontSize: "0.75rem", lineHeight: 1.3 }}>
+                      JPG, PNG, WebP (Max 5MB) • Landscape displays best in the map side panel
                     </span>
                   </div>
                 </div>

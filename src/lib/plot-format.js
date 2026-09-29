@@ -87,6 +87,7 @@ export function extractPlotTiers(plot) {
   if (plot.graves && plot.graves.length > 1) {
     return plot.graves.map((g, idx) => {
       let notesText = g.details?.notes;
+      const photo = getGravePhoto(g);
       if (notesText) {
         try {
           const parsed = JSON.parse(notesText);
@@ -104,6 +105,7 @@ export function extractPlotTiers(plot) {
         causeOfDeath: g.details?.causeOfDeath,
         contactPerson: g.details?.contactPerson,
         notes: notesText,
+        photo,
       };
     });
   }
@@ -115,13 +117,24 @@ export function extractPlotTiers(plot) {
   if (isRowPlot) {
     const hasOccupant = plot.graves?.length > 0 && plot.status === "occupied";
     const primaryGrave = plot.graves?.[0];
+    const structurePhoto = getGravePhoto(primaryGrave) || plot.photo || null;
+    let notesText = primaryGrave?.details?.notes;
+    if (notesText) {
+      try {
+        const parsed = JSON.parse(notesText);
+        notesText = parsed.text || parsed.notes || null;
+      } catch {
+        // plain text notes
+      }
+    }
     return [
-      { tier: 4, label: "Tier 4 (Top Level)", status: "available" },
-      { tier: 3, label: "Tier 3 (Upper Level)", status: "available" },
+      { tier: 4, label: "Tier 4 (Top Level)", status: "available", photo: structurePhoto },
+      { tier: 3, label: "Tier 3 (Upper Level)", status: "available", photo: structurePhoto },
       {
         tier: 2,
         label: "Tier 2 (Second Level)",
         status: plot.status === "reserved" ? "reserved" : "available",
+        photo: structurePhoto,
       },
       {
         tier: 1,
@@ -131,6 +144,8 @@ export function extractPlotTiers(plot) {
         causeOfDeath: primaryGrave?.details?.causeOfDeath || null,
         contactPerson: primaryGrave?.details?.contactPerson || null,
         status: hasOccupant ? "occupied" : "available",
+        photo: hasOccupant ? structurePhoto : null,
+        notes: notesText,
       },
     ];
   }

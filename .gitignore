@@ -26,8 +26,8 @@
 *.pem
 
 # user uploads
-/public/uploads/*
-!/public/uploads/*/
+/public/uploads/**
+!/public/uploads/**/
 !/public/uploads/**/.gitkeep
 
 # debug

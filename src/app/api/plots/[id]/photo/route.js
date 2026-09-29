@@ -140,18 +140,24 @@ export async function POST(request, { params }) {
   }
 
   if (parsed && parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
-    if (applyToAll || tier == null) {
+    if (applyToAll) {
       parsed.photo = photoUrl;
-      if (applyToAll) {
-        parsed.tiers = parsed.tiers.map((t) => ({ ...t, photo: photoUrl }));
-      }
-    } else {
+      parsed.tiers = parsed.tiers.map((t) => ({ ...t, photo: photoUrl }));
+    } else if (tier != null) {
       const tNum = Number(tier);
       const target = parsed.tiers.find((t) => t.tier === tNum);
       if (target) {
         target.photo = photoUrl;
-      } else {
+      }
+      if (!parsed.photo || photoUrl === null) {
         parsed.photo = photoUrl;
+      }
+    } else {
+      // General photo update: apply to stack structure and target occupant tier
+      parsed.photo = photoUrl;
+      const target = parsed.tiers.find((t) => t.status === "occupied") || parsed.tiers[0];
+      if (target) {
+        target.photo = photoUrl;
       }
     }
     currentNotes = JSON.stringify(parsed);

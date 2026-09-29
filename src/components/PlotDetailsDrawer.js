@@ -59,11 +59,26 @@ export default function PlotDetailsDrawer({
   isAdmin = false,
   authenticated = false,
 }) {
-  const [selectedTierIndex, setSelectedTierIndex] = useState(0);
+  const getInitialTierIndex = (tierList, query = "") => {
+    if (!tierList || tierList.length === 0) return 0;
+    const q = query.trim().toLowerCase();
+    if (q) {
+      const matchIdx = tierList.findIndex((t) => t.deceasedName?.toLowerCase().includes(q));
+      if (matchIdx !== -1) return matchIdx;
+    }
+    const occupiedIdx = tierList.findIndex((t) => t.status === "occupied" || t.deceasedName);
+    return occupiedIdx !== -1 ? occupiedIdx : 0;
+  };
+
+  const [selectedTierIndex, setSelectedTierIndex] = useState(() => {
+    const list = extractPlotTiers(plot);
+    const sorted = [...list].sort((a, b) => b.tier - a.tier);
+    return getInitialTierIndex(sorted);
+  });
   const [copiedGps, setCopiedGps] = useState(false);
   const [isLight, setIsLight] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const lastPlotIdRef = useRef(plot?.id);
+  const lastPlotIdRef = useRef(null);
   const copyTimeoutRef = useRef(null);
 
   // Debounce the raw query so typing does not re-scan the whole registry on
@@ -141,25 +156,25 @@ export default function PlotDetailsDrawer({
     return [...list].sort((a, b) => b.tier - a.tier);
   }, [activePlot]);
 
-  // Reset the selected tier when a different plot is selected. Done in an
-  // effect (never during render) and guarded by a ref so unrelated parent
-  // re-renders — which produce a new `plot` object identity — do not clobber
-  // the user's tier selection.
+  // Reset the selected tier when a different plot is selected or on mount.
+  // Defaults to the occupied tier or matching search occupant.
   useEffect(() => {
-    if (activePlot?.id === lastPlotIdRef.current) return;
-    lastPlotIdRef.current = activePlot?.id;
-    const list = extractPlotTiers(activePlot);
-    const occupiedIdx = list.findIndex((t) => t.status === "occupied");
-    setSelectedTierIndex(occupiedIdx !== -1 ? occupiedIdx : 0);
-  }, [activePlot]);
+    if (!activePlot || activePlot.id === lastPlotIdRef.current) return;
+    lastPlotIdRef.current = activePlot.id;
+    const q = (debouncedQuery || searchQuery || "").trim().toLowerCase();
+    setSelectedTierIndex(getInitialTierIndex(tiers, q));
+  }, [activePlot, tiers, debouncedQuery, searchQuery]);
 
   const currentTier = tiers[selectedTierIndex] || tiers[0] || null;
+  const primaryGrave = activePlot?.graves?.[0];
+  const structurePhoto = getGravePhoto(primaryGrave) || activePlot?.photo || null;
+  const bannerPhoto = currentTier?.photo || structurePhoto || "/images/memorial_headstone.jpg";
 
   const handleOpenPhotoModal = () => {
     setPhotoModalTier(currentTier?.tier || 1);
     setPhotoModalApplyToAll(false);
     setPhotoFile(null);
-    const currentPhoto = currentTier?.photo || activePlot?.photo || "";
+    const currentPhoto = currentTier?.photo || structurePhoto || "";
     setPhotoUrlInput(currentPhoto);
     setPhotoPreview(currentPhoto);
     setPhotoError("");
@@ -227,7 +242,7 @@ export default function PlotDetailsDrawer({
         if (!updatedPlot.graves[0].details) updatedPlot.graves[0].details = {};
         updatedPlot.graves[0].details.notes = data.notes;
       }
-      if (photoModalApplyToAll) {
+      if (photoModalApplyToAll || !updatedPlot.photo) {
         updatedPlot.photo = data.photoUrl;
       }
 
@@ -459,7 +474,7 @@ export default function PlotDetailsDrawer({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={currentTier?.photo || activePlot?.photo || "/images/memorial_headstone.jpg"}
+                  src={bannerPhoto}
                   alt={currentTier?.deceasedName || "Memorial plot"}
                   referrerPolicy="no-referrer"
                   onError={(e) => {
