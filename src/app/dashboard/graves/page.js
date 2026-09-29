@@ -593,7 +593,7 @@ export default function GravesPage() {
       {/* Add/Edit Grave Modal */}
       {showModal && isAdmin && isClient && createPortal(
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" style={{ maxWidth: "560px" }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingId ? "Edit Grave Record" : "Add Grave Record"}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>
@@ -601,268 +601,306 @@ export default function GravesPage() {
               </button>
             </div>
             <form className="modal-body" onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label">Deceased Name *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={form.deceasedName}
-                  onChange={(e) => setForm({ ...form, deceasedName: e.target.value })}
-                  required
-                  id="grave-form-name"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Plot *</label>
-                <select
-                  className="form-select"
-                  value={form.plotId}
-                  onChange={(e) => setForm({ ...form, plotId: e.target.value })}
-                  required
-                  id="grave-form-plot"
-                >
-                  <option value="">Select plot...</option>
-                  {editingId && form.plotId && !plots.some((p) => String(p.id) === form.plotId) && (() => {
-                    const current = (editingGrave || displayGraves.find((grave) => grave.id === editingId))?.plot;
-                    return <option value={form.plotId}>{current?.plotNumber || `Plot ${form.plotId}`} — current assignment</option>;
-                  })()}
-                  {plots.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.plotNumber} — {p.locationDetail?.location?.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Life & Interred Dates */}
-              <div className="grid grid-2">
-                <div className="form-group">
-                  <label className="form-label">Date of Birth</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={form.dateOfBirth}
-                    onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
-                    id="grave-form-dob"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date of Death</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={form.dateOfDeath}
-                    onChange={(e) => setForm({ ...form, dateOfDeath: e.target.value })}
-                    id="grave-form-dod"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-2">
-                <div className="form-group">
-                  <label className="form-label">Burial Date</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={form.burialDate}
-                    onChange={(e) => setForm({ ...form, burialDate: e.target.value })}
-                    id="grave-form-date"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Cause of Death</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={form.causeOfDeath}
-                    onChange={(e) => setForm({ ...form, causeOfDeath: e.target.value })}
-                    placeholder="e.g. Natural Causes, Cardiac Arrest"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-2">
-                <div className="form-group">
-                  <label className="form-label">Contact Person</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={form.contactPerson}
-                    onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
-                    placeholder="Family member / next of kin"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Contact Phone</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={form.contactPhone}
-                    onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
-                    placeholder="e.g. +63 917 555 0192"
-                  />
-                </div>
-              </div>
-              {/* Profile Photo */}
-              <div className="form-group" style={{ marginBottom: "0.25rem" }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: "0.35rem" }}>
-                  <label className="form-label" style={{ margin: 0 }}>Profile / Headstone Photo</label>
-                  <span
-                    style={{
-                      fontSize: "0.72rem",
-                      fontWeight: 600,
-                      padding: "0.15rem 0.55rem",
-                      borderRadius: "12px",
-                      background: "rgba(2, 132, 199, 0.1)",
-                      color: "var(--primary-color, #0284c7)",
-                    }}
-                  >
-                    Recommended: Landscape (16:9)
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "1rem",
-                    padding: "0.75rem 0.85rem",
-                    borderRadius: "var(--radius-md, 8px)",
-                    border: "1px solid var(--border-default, #e2e8f0)",
-                    background: "var(--bg-glass, rgba(241, 245, 249, 0.45))",
-                    minHeight: "92px",
-                  }}
-                >
-                  {/* Photo Preview Frame - Landscape (16:9) matching map side panel banner */}
-                  <div
-                    style={{
-                      position: "relative",
-                      width: 140,
-                      height: 78,
-                      aspectRatio: "16 / 9",
-                      borderRadius: "var(--radius-md, 8px)",
-                      border: "1.5px solid var(--border-hover, #cbd5e1)",
-                      overflow: "hidden",
-                      backgroundColor: "var(--bg-surface, #ffffff)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.08)",
-                    }}
-                  >
-                    {photoPreview ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={photoPreview}
-                        alt="Grave preview (16:9 landscape)"
-                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                        onError={(e) => {
-                          e.currentTarget.onerror = null;
-                          e.currentTarget.src = "/images/memorial_headstone.jpg";
-                        }}
-                      />
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem", color: "var(--text-muted)" }}>
-                        <Camera size={22} style={{ opacity: 0.55 }} />
-                        <span style={{ fontSize: "0.65rem", fontWeight: 600, opacity: 0.75 }}>16:9 Landscape</span>
-                      </div>
-                    )}
+              <div className="grave-modal-layout">
+                {/* Left Column: Grave & Personal Details */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                  <div className="form-group">
+                    <label className="form-label">Deceased Name *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={form.deceasedName}
+                      onChange={(e) => setForm({ ...form, deceasedName: e.target.value })}
+                      required
+                      id="grave-form-name"
+                    />
                   </div>
 
-                  {/* Actions & Format Hint */}
-                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.45rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                      <label
-                        className="btn btn-secondary btn-sm"
+                  <div className="form-group">
+                    <label className="form-label">Plot *</label>
+                    <select
+                      className="form-select"
+                      value={form.plotId}
+                      onChange={(e) => setForm({ ...form, plotId: e.target.value })}
+                      required
+                      id="grave-form-plot"
+                    >
+                      <option value="">Select plot...</option>
+                      {editingId && form.plotId && !plots.some((p) => String(p.id) === form.plotId) && (() => {
+                        const current = (editingGrave || displayGraves.find((grave) => grave.id === editingId))?.plot;
+                        return <option value={form.plotId}>{current?.plotNumber || `Plot ${form.plotId}`} — current assignment</option>;
+                      })()}
+                      {plots.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.plotNumber} — {p.locationDetail?.location?.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Life & Interred Dates */}
+                  <div className="grid grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Date of Birth</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={form.dateOfBirth}
+                        onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+                        id="grave-form-dob"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Date of Death</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={form.dateOfDeath}
+                        onChange={(e) => setForm({ ...form, dateOfDeath: e.target.value })}
+                        id="grave-form-dod"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Burial Date</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={form.burialDate}
+                        onChange={(e) => setForm({ ...form, burialDate: e.target.value })}
+                        id="grave-form-date"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Cause of Death</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={form.causeOfDeath}
+                        onChange={(e) => setForm({ ...form, causeOfDeath: e.target.value })}
+                        placeholder="e.g. Natural Causes, Cardiac Arrest"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Contact Person</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={form.contactPerson}
+                        onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+                        placeholder="Family member / next of kin"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Contact Phone</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={form.contactPhone}
+                        onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+                        placeholder="e.g. +63 917 555 0192"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Photo & Notes */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                  {/* Profile Photo */}
+                  <div className="form-group" style={{ marginBottom: "0.2rem" }}>
+                    <div className="flex items-center justify-between" style={{ marginBottom: "0.3rem" }}>
+                      <label className="form-label" style={{ margin: 0 }}>Profile / Headstone Photo</label>
+                      <span
                         style={{
-                          cursor: "pointer",
-                          margin: 0,
-                          padding: "0.4rem 0.85rem",
-                          fontSize: "0.8rem",
+                          fontSize: "0.7rem",
                           fontWeight: 600,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.4rem",
+                          padding: "0.15rem 0.5rem",
+                          borderRadius: "12px",
+                          background: "rgba(2, 132, 199, 0.1)",
+                          color: "var(--primary-color, #0284c7)",
                         }}
                       >
-                        <Upload size={14} />
-                        <span>Upload Photo</span>
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp,image/gif"
-                          style={{ display: "none" }}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            if (file.size > 5 * 1024 * 1024) {
-                              toast.error("Image file exceeds 5MB limit");
-                              return;
-                            }
-                            setPhotoFile(file);
-                            const reader = new FileReader();
-                            reader.onload = (evt) => {
-                              setPhotoPreview(evt.target.result);
-                            };
-                            reader.readAsDataURL(file);
-                          }}
-                        />
-                      </label>
-
-                      {(photoPreview || form.photo) && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm text-danger"
-                          style={{
-                            padding: "0.4rem 0.65rem",
-                            fontSize: "0.8rem",
-                            fontWeight: 500,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "0.3rem",
-                          }}
-                          onClick={() => {
-                            setPhotoFile(null);
-                            setPhotoPreview(null);
-                            setForm((prev) => ({ ...prev, photo: "" }));
-                          }}
-                        >
-                          <Trash2 size={14} />
-                          <span>Remove</span>
-                        </button>
-                      )}
+                        Recommended: Landscape (16:9)
+                      </span>
                     </div>
 
-                    <span className="text-xs text-muted" style={{ fontSize: "0.75rem", lineHeight: 1.3 }}>
-                      JPG, PNG, WebP (Max 5MB) • Landscape displays best in the map side panel
-                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.85rem",
+                        padding: "0.65rem 0.8rem",
+                        borderRadius: "var(--radius-md, 8px)",
+                        border: "1px solid var(--border-default, #e2e8f0)",
+                        background: "var(--bg-glass, rgba(241, 245, 249, 0.45))",
+                        minHeight: "88px",
+                      }}
+                    >
+                      {/* Photo Preview Frame - Landscape (16:9) matching map side panel banner */}
+                      <div
+                        style={{
+                          position: "relative",
+                          width: 132,
+                          height: 74,
+                          aspectRatio: "16 / 9",
+                          borderRadius: "var(--radius-md, 8px)",
+                          border: "1.5px solid var(--border-hover, #cbd5e1)",
+                          overflow: "hidden",
+                          backgroundColor: "var(--bg-surface, #ffffff)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.08)",
+                        }}
+                      >
+                        {photoPreview ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={photoPreview}
+                            alt="Grave preview (16:9 landscape)"
+                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = "/images/memorial_headstone.jpg";
+                            }}
+                          />
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem", color: "var(--text-muted)" }}>
+                            <Camera size={22} style={{ opacity: 0.55 }} />
+                            <span style={{ fontSize: "0.65rem", fontWeight: 600, opacity: 0.75 }}>16:9 Landscape</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions & Format Hint */}
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.35rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap" }}>
+                          <label
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              cursor: "pointer",
+                              margin: 0,
+                              padding: "0.35rem 0.75rem",
+                              fontSize: "0.78rem",
+                              fontWeight: 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.35rem",
+                            }}
+                          >
+                            <Upload size={13} />
+                            <span>Upload Photo</span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                if (file.size > 5 * 1024 * 1024) {
+                                  toast.error("Image file exceeds 5MB limit");
+                                  return;
+                                }
+                                setPhotoFile(file);
+                                const reader = new FileReader();
+                                reader.onload = (evt) => {
+                                  setPhotoPreview(evt.target.result);
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                          </label>
+
+                          {(photoPreview || form.photo) && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm text-danger"
+                              style={{
+                                padding: "0.35rem 0.6rem",
+                                fontSize: "0.78rem",
+                                fontWeight: 500,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                              onClick={() => {
+                                setPhotoFile(null);
+                                setPhotoPreview(null);
+                                setForm((prev) => ({ ...prev, photo: "" }));
+                              }}
+                            >
+                              <Trash2 size={13} />
+                              <span>Remove</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <span className="text-xs text-muted" style={{ fontSize: "0.72rem", lineHeight: 1.3 }}>
+                          JPG, PNG, WebP (Max 5MB) • Best in landscape
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div className="form-group" style={{ flex: 1, display: "flex", flexDirection: "column", marginBottom: 0 }}>
+                    <div className="flex items-center justify-between" style={{ marginBottom: "0.25rem" }}>
+                      <label className="form-label" style={{ margin: 0 }}>Notes</label>
+                      <span className="text-xs text-muted" style={{ fontWeight: 400, textTransform: "none", fontSize: "0.72rem" }}>
+                        Remarks or family instructions
+                      </span>
+                    </div>
+                    <textarea
+                      className="form-textarea"
+                      style={{
+                        flex: 1,
+                        minHeight: "105px",
+                        height: "100%",
+                        resize: "vertical",
+                        fontSize: "0.85rem",
+                        lineHeight: 1.45,
+                      }}
+                      placeholder="Enter memorial remarks, family instructions, or special notes..."
+                      value={form.notes}
+                      onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* Notes */}
-              <div className="form-group">
-                <div className="flex items-center justify-between" style={{ marginBottom: "0.25rem" }}>
-                  <label className="form-label" style={{ margin: 0 }}>Notes</label>
-                  <span className="text-xs text-muted" style={{ fontWeight: 400, textTransform: "none" }}>
-                    Remarks or family instructions
-                  </span>
-                </div>
-                <textarea
-                  className="form-textarea"
-                  rows={2}
-                  placeholder="Enter memorial remarks, family instructions, or special notes..."
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                />
-              </div>
-              <div className="flex gap-sm" style={{ marginTop: "0.75rem" }}>
-                <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowModal(false)}>
+              {/* Modal Footer with Cancel & Save fully in viewport */}
+              <div
+                className="modal-footer"
+                style={{
+                  marginTop: "0.85rem",
+                  paddingTop: "0.75rem",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "0.75rem",
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ minWidth: "110px", justifyContent: "center" }}
+                  onClick={() => setShowModal(false)}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} disabled={submitting} id="grave-form-submit">
-                  {submitting ? "Saving..." : editingId ? "Save Changes" : "Save Grave"}
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ minWidth: "150px", justifyContent: "center" }}
+                  disabled={submitting}
+                  id="grave-form-submit"
+                >
+                  {submitting ? "Saving..." : editingId ? "Save Changes" : "Save Grave Record"}
                 </button>
               </div>
             </form>

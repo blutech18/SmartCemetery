@@ -1210,6 +1210,31 @@ body.modal-open .sidebar {
   gap: 0.65rem;
 }
 
+/* ── Wide Modal & Responsive Layouts ──────────────────────── */
+.modal-wide,
+.modal-lg {
+  max-width: 880px;
+  width: min(880px, 94vw);
+}
+
+.grave-modal-layout {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 1.35rem;
+  align-items: stretch;
+}
+
+@media (max-width: 768px) {
+  .modal-wide,
+  .modal-lg {
+    width: 95%;
+  }
+  .grave-modal-layout {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+}
+
 /* ── Empty State ───────────────────────────────────────────── */
 .empty-state {
   text-align: center;
