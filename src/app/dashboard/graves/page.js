@@ -718,31 +718,28 @@ export default function GravesPage() {
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
-                        gap: "0.85rem",
-                        padding: "0.65rem 0.8rem",
+                        alignItems: "stretch",
                         borderRadius: "var(--radius-md, 8px)",
                         border: "1px solid var(--border-default, #e2e8f0)",
                         background: "var(--bg-glass, rgba(241, 245, 249, 0.45))",
-                        minHeight: "88px",
+                        minHeight: "96px",
+                        overflow: "hidden",
                       }}
                     >
-                      {/* Photo Preview Frame - Landscape (16:9) matching map side panel banner */}
+                      {/* Photo Preview Frame - 100% height length of the card */}
                       <div
                         style={{
                           position: "relative",
-                          width: 132,
-                          height: 74,
-                          aspectRatio: "16 / 9",
-                          borderRadius: "var(--radius-md, 8px)",
-                          border: "1.5px solid var(--border-hover, #cbd5e1)",
+                          width: "140px",
+                          minHeight: "92px",
+                          height: "100%",
+                          borderRight: "1px solid var(--border-default, #e2e8f0)",
                           overflow: "hidden",
                           backgroundColor: "var(--bg-surface, #ffffff)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           flexShrink: 0,
-                          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.08)",
                         }}
                       >
                         {photoPreview ? (
@@ -757,27 +754,30 @@ export default function GravesPage() {
                             }}
                           />
                         ) : (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.2rem", color: "var(--text-muted)" }}>
-                            <Camera size={22} style={{ opacity: 0.55 }} />
-                            <span style={{ fontSize: "0.65rem", fontWeight: 600, opacity: 0.75 }}>16:9 Landscape</span>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25rem", color: "var(--text-muted)", padding: "0.5rem" }}>
+                            <Camera size={24} style={{ opacity: 0.55 }} />
+                            <span style={{ fontSize: "0.68rem", fontWeight: 600, opacity: 0.75 }}>16:9 Landscape</span>
                           </div>
                         )}
                       </div>
 
                       {/* Actions & Format Hint */}
-                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.35rem" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 0, padding: "0.65rem 0.8rem", display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.45rem" }}>
+                        {/* Upload and Delete in the same row */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "nowrap" }}>
                           <label
                             className="btn btn-secondary btn-sm"
                             style={{
                               cursor: "pointer",
                               margin: 0,
-                              padding: "0.35rem 0.75rem",
+                              padding: "0.38rem 0.7rem",
                               fontSize: "0.78rem",
                               fontWeight: 600,
                               display: "inline-flex",
                               alignItems: "center",
                               gap: "0.35rem",
+                              whiteSpace: "nowrap",
+                              flexShrink: 0,
                             }}
                           >
                             <Upload size={13} />
@@ -808,12 +808,14 @@ export default function GravesPage() {
                               type="button"
                               className="btn btn-ghost btn-sm text-danger"
                               style={{
-                                padding: "0.35rem 0.6rem",
+                                padding: "0.38rem 0.65rem",
                                 fontSize: "0.78rem",
                                 fontWeight: 500,
                                 display: "inline-flex",
                                 alignItems: "center",
                                 gap: "0.3rem",
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
                               }}
                               onClick={() => {
                                 setPhotoFile(null);
@@ -822,7 +824,7 @@ export default function GravesPage() {
                               }}
                             >
                               <Trash2 size={13} />
-                              <span>Remove</span>
+                              <span>Delete</span>
                             </button>
                           )}
                         </div>

@@ -1219,8 +1219,8 @@ body.modal-open .sidebar {
 
 .grave-modal-layout {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 1.35rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
   align-items: stretch;
 }
 
