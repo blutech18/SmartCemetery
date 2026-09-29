@@ -208,7 +208,14 @@ export default function VerificationPage() {
         className="flex justify-between items-center gap-md"
         style={{ flexWrap: "wrap", marginBottom: "var(--space-md)" }}
       >
-        <div className="tabs" style={{ maxWidth: "480px", margin: 0 }}>
+        <div
+          className="tabs"
+          style={{
+            margin: 0,
+            flexShrink: 0,
+            width: "min(100%, 420px)",
+          }}
+        >
           <button
             type="button"
             className={`tab ${activeTab === "pending" ? "active" : ""}`}
@@ -220,11 +227,12 @@ export default function VerificationPage() {
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: "0.35rem",
+              gap: "0.4rem",
+              whiteSpace: "nowrap",
             }}
           >
-            <Clock size={15} />
-            <span>Pending Review ({pendingRecords.length})</span>
+            <Clock size={15} style={{ flexShrink: 0 }} />
+            <span>Pending Review&nbsp;({pendingRecords.length})</span>
           </button>
           <button
             type="button"
@@ -237,11 +245,12 @@ export default function VerificationPage() {
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: "0.35rem",
+              gap: "0.4rem",
+              whiteSpace: "nowrap",
             }}
           >
-            <ShieldAlert size={15} />
-            <span>Incomplete Alerts ({incompleteRecords.length})</span>
+            <ShieldAlert size={15} style={{ flexShrink: 0 }} />
+            <span>Incomplete Alerts&nbsp;({incompleteRecords.length})</span>
           </button>
         </div>
 

@@ -1560,16 +1560,18 @@ body.map-fullscreen-active .alert {
 /* ── Tabs ──────────────────────────────────────────────────── */
 .tabs {
   display: flex;
-  gap: 2px;
+  align-items: center;
+  gap: 3px;
   background: var(--bg-elevated);
   border-radius: var(--radius-md);
   padding: 3px;
   margin-bottom: var(--space-lg);
+  max-width: 100%;
 }
 
 .tab {
   flex: 1;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.85rem;
   text-align: center;
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
@@ -1579,6 +1581,7 @@ body.map-fullscreen-active .alert {
   transition: all var(--transition-fast);
   border: none;
   background: none;
+  white-space: nowrap;
 }
 
 .tab:hover {
