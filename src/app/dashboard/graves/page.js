@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { Search, Archive, Pencil, Trash2, Camera } from "lucide-react";
+import { Search, Archive, Pencil, Trash2, Camera, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
@@ -102,14 +102,21 @@ export default function GravesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      let savedNotes = form.notes;
+      const cleanedNotes = form.notes.trim();
+      let savedNotes = cleanedNotes || null;
       if (editingId) {
         const existing = displayGraves.find((g) => g.id === editingId);
         if (existing?.details?.notes) {
           try {
             const parsed = JSON.parse(existing.details.notes);
             if (parsed && typeof parsed === "object") {
-              parsed.text = form.notes;
+              parsed.text = cleanedNotes || undefined;
+              if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
+                const matchingTier = parsed.tiers.find((t) => t.deceasedName === form.deceasedName) || parsed.tiers[0];
+                if (matchingTier) {
+                  matchingTier.notes = cleanedNotes || undefined;
+                }
+              }
               if (!photoFile && form.photo !== undefined) {
                 parsed.photo = form.photo || null;
               }
@@ -121,13 +128,13 @@ export default function GravesPage() {
         } else if (!photoFile && form.photo) {
           savedNotes = JSON.stringify({
             photo: form.photo,
-            text: form.notes || "",
+            text: cleanedNotes,
           });
         }
       } else if (!photoFile && form.photo) {
         savedNotes = JSON.stringify({
           photo: form.photo,
-          text: form.notes || "",
+          text: cleanedNotes,
         });
       }
 
@@ -213,10 +220,18 @@ export default function GravesPage() {
     try {
       const parsed = JSON.parse(rawNotes);
       if (parsed && typeof parsed === "object") {
-        if (parsed.text !== undefined) textNotes = parsed.text;
+        if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
+          const matchingTier = parsed.tiers.find((t) => t.deceasedName === grave.deceasedName) || parsed.tiers[0];
+          textNotes = parsed.text || parsed.notes || matchingTier?.notes || "";
+        } else {
+          textNotes = parsed.text || parsed.notes || "";
+        }
       }
     } catch {
-      // raw string notes
+      // If it looks like raw JSON codebase, sanitize it so code is never displayed
+      if (rawNotes.trim().startsWith("{") && (rawNotes.includes('"') || rawNotes.includes(":"))) {
+        textNotes = "";
+      }
     }
 
     setForm({
@@ -585,44 +600,47 @@ export default function GravesPage() {
                 </div>
               </div>
               {/* Profile Photo */}
-              <div className="form-group">
-                <label className="form-label flex items-center justify-between">
-                  <span>Profile Photo</span>
-                  {(photoPreview || form.photo) && (
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() => {
-                        setPhotoFile(null);
-                        setPhotoPreview(null);
-                        setForm((prev) => ({ ...prev, photo: "" }));
-                      }}
-                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                    >
-                      Remove photo
-                    </button>
-                  )}
-                </label>
-                <div className="flex gap-md items-center" style={{ marginTop: "0.25rem" }}>
+              <div className="form-group" style={{ marginBottom: "0.25rem" }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: "0.25rem" }}>
+                  <label className="form-label" style={{ margin: 0 }}>Profile Photo</label>
+                  <span className="text-xs text-muted" style={{ fontWeight: 400, textTransform: "none" }}>
+                    Optional headstone or portrait
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "1rem",
+                    padding: "0.75rem 0.85rem",
+                    borderRadius: "var(--radius-md, 8px)",
+                    border: "1px solid var(--border-default, #e2e8f0)",
+                    background: "var(--bg-glass, rgba(241, 245, 249, 0.45))",
+                  }}
+                >
+                  {/* Photo Preview Frame */}
                   <div
                     style={{
-                      width: 56,
-                      height: 56,
+                      position: "relative",
+                      width: 58,
+                      height: 58,
                       borderRadius: "var(--radius-md, 8px)",
-                      border: "1px solid var(--border-color, #e2e8f0)",
-                      backgroundColor: "var(--bg-secondary, #f8fafc)",
+                      border: "1.5px solid var(--border-hover, #cbd5e1)",
                       overflow: "hidden",
+                      backgroundColor: "var(--bg-surface, #ffffff)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       flexShrink: 0,
+                      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.06)",
                     }}
                   >
                     {photoPreview ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={photoPreview}
-                        alt="Preview"
+                        alt="Grave preview"
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         onError={(e) => {
                           e.currentTarget.onerror = null;
@@ -630,16 +648,27 @@ export default function GravesPage() {
                         }}
                       />
                     ) : (
-                      <Camera size={22} className="text-muted" />
+                      <Camera size={22} className="text-muted" style={{ opacity: 0.55 }} />
                     )}
                   </div>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                    <div className="flex gap-sm items-center">
+
+                  {/* Actions & URL Input */}
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <label
                         className="btn btn-secondary btn-sm"
-                        style={{ cursor: "pointer", margin: 0, display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                        style={{
+                          cursor: "pointer",
+                          margin: 0,
+                          padding: "0.32rem 0.75rem",
+                          fontSize: "0.78rem",
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                        }}
                       >
-                        <Camera size={14} />
+                        <Upload size={13} />
                         <span>Upload Photo</span>
                         <input
                           type="file"
@@ -661,28 +690,67 @@ export default function GravesPage() {
                           }}
                         />
                       </label>
-                      <span className="text-xs text-muted">or URL below</span>
+
+                      {(photoPreview || form.photo) && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm text-danger"
+                          style={{
+                            padding: "0.32rem 0.55rem",
+                            fontSize: "0.78rem",
+                            fontWeight: 500,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                          }}
+                          onClick={() => {
+                            setPhotoFile(null);
+                            setPhotoPreview(null);
+                            setForm((prev) => ({ ...prev, photo: "" }));
+                          }}
+                        >
+                          <Trash2 size={13} />
+                          <span>Remove</span>
+                        </button>
+                      )}
+
+                      <span className="text-xs text-muted" style={{ fontSize: "0.72rem" }}>
+                        JPG, PNG, WebP (Max 5MB)
+                      </span>
                     </div>
+
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Photo URL (e.g. /images/..., https://...)"
+                      placeholder="Or paste image web link (optional)..."
                       value={form.photo}
                       onChange={(e) => {
                         setPhotoFile(null);
                         setForm({ ...form, photo: e.target.value });
                         setPhotoPreview(e.target.value || null);
                       }}
-                      style={{ fontSize: "0.85rem", padding: "0.35rem 0.65rem" }}
+                      style={{
+                        fontSize: "0.8rem",
+                        height: 32,
+                        padding: "0.25rem 0.65rem",
+                      }}
                     />
                   </div>
                 </div>
               </div>
 
+              {/* Notes */}
               <div className="form-group">
-                <label className="form-label">Notes</label>
+                <div className="flex items-center justify-between" style={{ marginBottom: "0.25rem" }}>
+                  <label className="form-label" style={{ margin: 0 }}>Notes</label>
+                  <span className="text-xs text-muted" style={{ fontWeight: 400, textTransform: "none" }}>
+                    Remarks or family instructions
+                  </span>
+                </div>
                 <textarea
                   className="form-textarea"
+                  rows={2}
+                  placeholder="Enter memorial remarks, family instructions, or special notes..."
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 />

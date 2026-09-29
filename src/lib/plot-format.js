@@ -75,6 +75,7 @@ export function extractPlotTiers(plot) {
         return parsed.tiers.map((t) => ({
           ...t,
           photo: t.photo || parsed.photo || null,
+          notes: t.notes || parsed.text || parsed.notes || null,
         }));
       }
     } catch {
@@ -84,16 +85,27 @@ export function extractPlotTiers(plot) {
 
   // 2. Multi-grave plot.
   if (plot.graves && plot.graves.length > 1) {
-    return plot.graves.map((g, idx) => ({
-      tier: idx + 1,
-      label: `Tier ${idx + 1}`,
-      deceasedName: g.deceasedName,
-      burialDate: g.burialDate,
-      status: g.status === "active" ? "occupied" : g.status || "occupied",
-      causeOfDeath: g.details?.causeOfDeath,
-      contactPerson: g.details?.contactPerson,
-      notes: g.details?.notes,
-    }));
+    return plot.graves.map((g, idx) => {
+      let notesText = g.details?.notes;
+      if (notesText) {
+        try {
+          const parsed = JSON.parse(notesText);
+          notesText = parsed.text || parsed.notes || null;
+        } catch {
+          // plain text notes
+        }
+      }
+      return {
+        tier: idx + 1,
+        label: `Tier ${idx + 1}`,
+        deceasedName: g.deceasedName,
+        burialDate: g.burialDate,
+        status: g.status === "active" ? "occupied" : g.status || "occupied",
+        causeOfDeath: g.details?.causeOfDeath,
+        contactPerson: g.details?.contactPerson,
+        notes: notesText,
+      };
+    });
   }
 
   // 3. Row / apartment crypt section.
@@ -132,7 +144,7 @@ export function extractPlotTiers(plot) {
       try {
         const parsed = JSON.parse(notesText);
         if (parsed.photo) photo = parsed.photo;
-        if (parsed.text !== undefined) notesText = parsed.text;
+        notesText = parsed.text || parsed.notes || null;
       } catch {
         // plain text notes
       }
