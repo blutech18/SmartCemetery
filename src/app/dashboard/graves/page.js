@@ -713,21 +713,7 @@ export default function GravesPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
                   {/* Profile Photo */}
                   <div className="form-group" style={{ marginBottom: "0.2rem" }}>
-                    <div className="flex items-center justify-between" style={{ marginBottom: "0.3rem" }}>
-                      <label className="form-label" style={{ margin: 0 }}>Profile / Headstone Photo</label>
-                      <span
-                        style={{
-                          fontSize: "0.7rem",
-                          fontWeight: 600,
-                          padding: "0.15rem 0.5rem",
-                          borderRadius: "12px",
-                          background: "rgba(2, 132, 199, 0.1)",
-                          color: "var(--primary-color, #0284c7)",
-                        }}
-                      >
-                        Recommended: Landscape (16:9)
-                      </span>
-                    </div>
+                    <label className="form-label" style={{ marginBottom: "0.3rem" }}>Profile / Headstone Photo</label>
 
                     <div
                       style={{
