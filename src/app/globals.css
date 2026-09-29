@@ -995,7 +995,6 @@ html[data-role="client"] .menu-toggle {
   margin-left: var(--sidebar-width);
   min-height: 100vh;
   position: relative;
-  z-index: 1;
 }
 
 .page-content {
@@ -1051,6 +1050,15 @@ body.modal-open,
 html.modal-open .main-content,
 body.modal-open .main-content {
   overflow: hidden !important;
+}
+
+/* Ensure modal and confirm overlays always cover sidebar and entire viewport */
+html:has(.modal-overlay) .sidebar,
+body:has(.modal-overlay) .sidebar,
+html:has(.confirm-overlay) .sidebar,
+body:has(.confirm-overlay) .sidebar,
+body.modal-open .sidebar {
+  z-index: 90 !important;
 }
 
 @keyframes modalOverlayFadeIn {

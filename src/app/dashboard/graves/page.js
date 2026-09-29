@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { Search, Archive, Pencil, Trash2, Camera, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
+import { useIsClient } from "@/lib/use-is-client";
 import { getGravePhoto } from "@/lib/plot-format";
 
 const EMPTY_FORM = {
@@ -31,6 +33,7 @@ export default function GravesPage() {
   const [totalRecords, setTotalRecords] = useState(0);
   const pageSize = 10;
   const [showModal, setShowModal] = useState(false);
+  const isClient = useIsClient();
   useBodyScrollLock(showModal);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -516,7 +519,7 @@ export default function GravesPage() {
       />
 
       {/* Add/Edit Grave Modal */}
-      {showModal && isAdmin && (
+      {showModal && isAdmin && isClient && createPortal(
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -617,14 +620,15 @@ export default function GravesPage() {
                     borderRadius: "var(--radius-md, 8px)",
                     border: "1px solid var(--border-default, #e2e8f0)",
                     background: "var(--bg-glass, rgba(241, 245, 249, 0.45))",
+                    minHeight: "90px",
                   }}
                 >
-                  {/* Photo Preview Frame */}
+                  {/* Photo Preview Frame - Fills section height cleanly */}
                   <div
                     style={{
                       position: "relative",
-                      width: 58,
-                      height: 58,
+                      width: 76,
+                      height: 76,
                       borderRadius: "var(--radius-md, 8px)",
                       border: "1.5px solid var(--border-hover, #cbd5e1)",
                       overflow: "hidden",
@@ -633,7 +637,7 @@ export default function GravesPage() {
                       alignItems: "center",
                       justifyContent: "center",
                       flexShrink: 0,
-                      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.06)",
+                      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.08)",
                     }}
                   >
                     {photoPreview ? (
@@ -641,34 +645,34 @@ export default function GravesPage() {
                       <img
                         src={photoPreview}
                         alt="Grave preview"
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         onError={(e) => {
                           e.currentTarget.onerror = null;
                           e.currentTarget.src = "/images/memorial_headstone.jpg";
                         }}
                       />
                     ) : (
-                      <Camera size={22} className="text-muted" style={{ opacity: 0.55 }} />
+                      <Camera size={26} className="text-muted" style={{ opacity: 0.55 }} />
                     )}
                   </div>
 
-                  {/* Actions & URL Input */}
-                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+                  {/* Actions & Format Hint */}
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.5rem" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <label
                         className="btn btn-secondary btn-sm"
                         style={{
                           cursor: "pointer",
                           margin: 0,
-                          padding: "0.32rem 0.75rem",
-                          fontSize: "0.78rem",
+                          padding: "0.4rem 0.85rem",
+                          fontSize: "0.8rem",
                           fontWeight: 600,
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: "0.35rem",
+                          gap: "0.4rem",
                         }}
                       >
-                        <Upload size={13} />
+                        <Upload size={14} />
                         <span>Upload Photo</span>
                         <input
                           type="file"
@@ -696,12 +700,12 @@ export default function GravesPage() {
                           type="button"
                           className="btn btn-ghost btn-sm text-danger"
                           style={{
-                            padding: "0.32rem 0.55rem",
-                            fontSize: "0.78rem",
+                            padding: "0.4rem 0.65rem",
+                            fontSize: "0.8rem",
                             fontWeight: 500,
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: "0.25rem",
+                            gap: "0.3rem",
                           }}
                           onClick={() => {
                             setPhotoFile(null);
@@ -709,32 +713,15 @@ export default function GravesPage() {
                             setForm((prev) => ({ ...prev, photo: "" }));
                           }}
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={14} />
                           <span>Remove</span>
                         </button>
                       )}
-
-                      <span className="text-xs text-muted" style={{ fontSize: "0.72rem" }}>
-                        JPG, PNG, WebP (Max 5MB)
-                      </span>
                     </div>
 
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Or paste image web link (optional)..."
-                      value={form.photo}
-                      onChange={(e) => {
-                        setPhotoFile(null);
-                        setForm({ ...form, photo: e.target.value });
-                        setPhotoPreview(e.target.value || null);
-                      }}
-                      style={{
-                        fontSize: "0.8rem",
-                        height: 32,
-                        padding: "0.25rem 0.65rem",
-                      }}
-                    />
+                    <span className="text-xs text-muted" style={{ fontSize: "0.75rem" }}>
+                      JPG, PNG, or WebP (Max 5MB)
+                    </span>
                   </div>
                 </div>
               </div>
@@ -765,7 +752,8 @@ export default function GravesPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
