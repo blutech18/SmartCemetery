@@ -262,6 +262,25 @@ function MapPageInner() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Sync the open side-panel plot whenever the plots array is refreshed so
+  // edits made on other pages (e.g. Grave Records) are reflected immediately.
+  useEffect(() => {
+    if (!detailsPlot) return;
+    const fresh = plots.find((p) => p.id === detailsPlot.id);
+    if (fresh && fresh !== detailsPlot) setDetailsPlot(fresh);
+  }, [plots]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch plots whenever the user returns to this browser tab so changes
+  // made on other dashboard pages (e.g. updating DOB/DOD in Grave Records)
+  // are visible without a manual page refresh.
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === "visible") fetchPlots();
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [fetchPlots]);
+
   const unpinned = plots.filter((p) => !hasGps(p));
 
   // Resolve a section's subsection label (e.g. "A1") from its detail id.
