@@ -30,9 +30,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   requireRole.mockResolvedValue({ ok: true, user: { id: 9, role: "Admin" } });
   tx = {
-    grave: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    grave: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
     graveDetail: { upsert: vi.fn() },
-    plot: { updateMany: vi.fn(), findUnique: vi.fn() },
+    plot: { updateMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   };
   prisma.$transaction.mockImplementation((callback) => callback(tx));
 });
@@ -46,9 +46,12 @@ describe("grave Admin mutation routes", () => {
   });
   it("moves plots with compare-and-set and stores all detail metadata encrypted", async () => {
     tx.grave.findUnique
-      .mockResolvedValueOnce({ id: 3, plotId: 10, status: "active", details: null })
-      .mockResolvedValueOnce({ id: 3, plotId: 11, details: null });
-    tx.plot.updateMany.mockResolvedValue({ count: 1 });
+      .mockResolvedValueOnce({ id: 3, plotId: 10, tier: 1, status: "active", details: null })
+      .mockResolvedValueOnce({ id: 3, plotId: 11, tier: 1, details: null });
+    tx.grave.findFirst.mockResolvedValue(null); // tier not taken
+    tx.plot.findUnique.mockResolvedValue({ status: "available" });
+    tx.plot.update.mockResolvedValue({ count: 1 });
+    tx.grave.count.mockResolvedValue(0); // no remaining graves on old plot
 
     const response = await PATCH(request("PATCH", {
       plotId: 11,
@@ -58,13 +61,12 @@ describe("grave Admin mutation routes", () => {
     }), context());
 
     expect(response.status).toBe(200);
-    expect(tx.plot.updateMany).toHaveBeenCalledTimes(2);
-    expect(tx.plot.updateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: 11, status: "available", graves: { none: {} } },
+    expect(tx.plot.updateMany).toHaveBeenCalledWith({
+      where: { id: 11, status: "available" },
       data: { status: "occupied" },
     });
-    expect(tx.plot.updateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: 10, status: "occupied", graves: { none: {} } },
+    expect(tx.plot.updateMany).toHaveBeenCalledWith({
+      where: { id: 10, status: "occupied" },
       data: { status: "available" },
     });
     expect(tx.grave.update).toHaveBeenCalledWith(expect.objectContaining({
@@ -79,11 +81,11 @@ describe("grave Admin mutation routes", () => {
   });
 
   it("rolls back the update path when target plot cannot be claimed", async () => {
-    tx.grave.findUnique.mockResolvedValue({ id: 3, plotId: 10, status: "active", details: null });
-    tx.plot.updateMany.mockResolvedValue({ count: 0 });
-    tx.plot.findUnique.mockResolvedValue({ status: "occupied" });
+    tx.grave.findUnique.mockResolvedValue({ id: 3, plotId: 10, tier: 1, status: "active", details: null });
+    tx.grave.findFirst.mockResolvedValue(null); // tier not taken
+    tx.plot.findUnique.mockResolvedValue(null); // plot not found
     const response = await PATCH(request("PATCH", { plotId: 11 }), context());
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(404);
     expect(tx.grave.update).not.toHaveBeenCalled();
     expect(writeAuditLog).not.toHaveBeenCalled();
   });
@@ -108,12 +110,16 @@ describe("grave Admin mutation routes", () => {
     tx.grave.findUnique.mockResolvedValue({
       id: 3, plotId: 10, status: "active", burialDate: new Date(),
     });
+    tx.grave.count.mockResolvedValue(0); // no remaining graves
     tx.plot.updateMany.mockResolvedValue({ count: 1 });
     const response = await DELETE(request("DELETE"), context());
     expect(response.status).toBe(200);
     expect(tx.grave.delete).toHaveBeenCalledWith({ where: { id: 3 } });
+    expect(tx.grave.count).toHaveBeenCalledWith({
+      where: { plotId: 10, id: { not: 3 } },
+    });
     expect(tx.plot.updateMany).toHaveBeenCalledWith({
-      where: { id: 10, status: "occupied", graves: { none: {} } },
+      where: { id: 10, status: "occupied" },
       data: { status: "available" },
     });
     expect(writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "grave.delete" }));

@@ -91,6 +91,8 @@ function installTransaction() {
           plotId: 10,
           details: createdDetailData ?? null,
         })),
+        findFirst: vi.fn(async () => null),
+        count: vi.fn(async () => 0),
       },
       graveDetail: {
         create: vi.fn(async ({ data }) => {
@@ -100,7 +102,8 @@ function installTransaction() {
       },
       plot: {
         updateMany: vi.fn(async () => ({ count: 1 })),
-        findUnique: vi.fn(async () => ({ status: "available" })),
+        findUnique: vi.fn(async () => ({ id: 10, status: "available" })),
+        update: vi.fn(async () => ({})),
       },
     };
     lastTx = tx;

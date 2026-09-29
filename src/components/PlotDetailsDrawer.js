@@ -150,6 +150,14 @@ export default function PlotDetailsDrawer({
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState("");
 
+  // Occupy tier modal state
+  const [showOccupyModal, setShowOccupyModal] = useState(false);
+  const [selectedGraveId, setSelectedGraveId] = useState("");
+  const [occupyError, setOccupyError] = useState("");
+  const [occupying, setOccupying] = useState(false);
+  const [occupySearchQuery, setOccupySearchQuery] = useState("");
+  const [occupyDropdownOpen, setOccupyDropdownOpen] = useState(false);
+
   // Extract tiers for current plot
   const tiers = useMemo(() => {
     const list = extractPlotTiers(activePlot);
@@ -649,6 +657,39 @@ export default function PlotDetailsDrawer({
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Occupy This Tier button — shown when current tier is vacant */}
+              {(isAdmin || authenticated) && currentTier?.status === "available" && (
+                <div style={{ padding: "0 18px", marginBottom: 14, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedGraveId("");
+                      setOccupyError("");
+                      setShowOccupyModal(true);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      background: isLight ? "#dcfce7" : "rgba(34, 197, 94, 0.15)",
+                      color: isLight ? "#15803d" : "#86efac",
+                      border: isLight ? "1px solid #86efac" : "1px solid rgba(34, 197, 94, 0.3)",
+                      fontWeight: 600,
+                      fontSize: "0.85rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <CheckCircle2 size={15} />
+                    <span>Occupy {currentTier?.label || `Tier ${currentTier?.tier}`}</span>
+                  </button>
                 </div>
               )}
 
@@ -1501,6 +1542,456 @@ export default function PlotDetailsDrawer({
           </div>
         </div>
       )}
+
+      {/* ─── Occupy Tier Modal ─── */}
+      {showOccupyModal && (() => {
+        const allGraves = [];
+        for (const p of allPlots) {
+          for (const g of p.graves || []) {
+            // Skip archived graves — they cannot be updated or transferred
+            if (g.status === "archived") continue;
+            allGraves.push({
+              id: g.id,
+              deceasedName: g.deceasedName,
+              plotNumber: p.plotNumber,
+              tier: g.tier || 1,
+              status: g.status,
+              burialDate: g.burialDate,
+            });
+          }
+        }
+        // Sort: vacant first, then by name
+        allGraves.sort((a, b) => {
+          const aOcc = a.status === "active" ? 1 : 0;
+          const bOcc = b.status === "active" ? 1 : 0;
+          if (aOcc !== bOcc) return aOcc - bOcc;
+          return a.deceasedName.localeCompare(b.deceasedName);
+        });
+
+        const selectedGrave = allGraves.find((g) => g.id === Number(selectedGraveId));
+
+        return (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.65)",
+              backdropFilter: "blur(5px)",
+              WebkitBackdropFilter: "blur(5px)",
+              zIndex: 1200,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+            onClick={() => !occupying && setShowOccupyModal(false)}
+          >
+            <div
+              style={{
+                background: isLight ? "#ffffff" : "#0f172a",
+                color: isLight ? "#0f172a" : "#f8fafc",
+                border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: 12,
+                padding: 20,
+                maxWidth: 440,
+                width: "100%",
+                boxShadow: "0 20px 45px rgba(0, 0, 0, 0.5)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      background: isLight ? "#dcfce7" : "rgba(34, 197, 94, 0.15)",
+                      color: isLight ? "#15803d" : "#86efac",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <CheckCircle2 size={16} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700 }}>
+                      Occupy {currentTier?.label || `Tier ${currentTier?.tier}`}
+                    </h3>
+                    <p style={{ margin: 0, fontSize: "0.72rem", color: isLight ? "#64748b" : "#94a3b8" }}>
+                      {activePlot?.plotNumber} • Select a grave to assign
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowOccupyModal(false)}
+                  disabled={occupying}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: isLight ? "#94a3b8" : "#64748b",
+                    padding: 4,
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Searchable Dropdown */}
+              <div style={{ position: "relative" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    color: isLight ? "#475569" : "#cbd5e1",
+                    marginBottom: 4,
+                  }}
+                >
+                  Select Grave <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+
+                {/* Trigger input */}
+                <div
+                  onClick={() => !occupying && setOccupyDropdownOpen(!occupyDropdownOpen)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                    background: isLight ? "#f8fafc" : "#1e293b",
+                    cursor: occupying ? "default" : "pointer",
+                    opacity: occupying ? 0.7 : 1,
+                  }}
+                >
+                  <Search size={14} style={{ color: isLight ? "#94a3b8" : "#64748b", flexShrink: 0 }} />
+                  <input
+                    type="text"
+                    value={occupyDropdownOpen ? occupySearchQuery : (selectedGrave ? `${selectedGrave.deceasedName} — Plot ${selectedGrave.plotNumber}, Tier ${selectedGrave.tier}` : "")}
+                    onChange={(e) => {
+                      setOccupySearchQuery(e.target.value);
+                      setOccupyDropdownOpen(true);
+                      setSelectedGraveId("");
+                    }}
+                    onFocus={() => setOccupyDropdownOpen(true)}
+                    placeholder="Search by name or plot..."
+                    disabled={occupying}
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      background: "transparent",
+                      outline: "none",
+                      fontSize: "0.82rem",
+                      color: isLight ? "#1e293b" : "#f8fafc",
+                      padding: 0,
+                      minWidth: 0,
+                    }}
+                  />
+                  {occupyDropdownOpen && occupySearchQuery && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOccupySearchQuery("");
+                        setSelectedGraveId("");
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: isLight ? "#94a3b8" : "#64748b",
+                        padding: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown list */}
+                {occupyDropdownOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      marginTop: 4,
+                      background: isLight ? "#ffffff" : "#1e293b",
+                      border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                      borderRadius: 8,
+                      boxShadow: isLight ? "0 8px 24px rgba(0,0,0,0.12)" : "0 8px 24px rgba(0,0,0,0.5)",
+                      zIndex: 100,
+                      maxHeight: 240,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {(() => {
+                      const q = occupySearchQuery.trim().toLowerCase();
+                      const filtered = q
+                        ? allGraves.filter(
+                            (g) =>
+                              g.deceasedName.toLowerCase().includes(q) ||
+                              g.plotNumber.toLowerCase().includes(q)
+                          )
+                        : allGraves;
+
+                      if (filtered.length === 0) {
+                        return (
+                          <div
+                            style={{
+                              padding: "16px 12px",
+                              textAlign: "center",
+                              color: isLight ? "#94a3b8" : "#64748b",
+                              fontSize: "0.78rem",
+                            }}
+                          >
+                            No graves found
+                          </div>
+                        );
+                      }
+
+                      return filtered.map((g) => {
+                        const isSelected = g.id === Number(selectedGraveId);
+                        const isOccupied = g.status === "active";
+                        return (
+                          <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedGraveId(String(g.id));
+                              setOccupyDropdownOpen(false);
+                              setOccupySearchQuery("");
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              width: "100%",
+                              padding: "8px 12px",
+                              border: "none",
+                              background: isSelected
+                                ? isLight
+                                  ? "#e0f2fe"
+                                  : "rgba(56, 189, 248, 0.15)"
+                                : "transparent",
+                              cursor: "pointer",
+                              textAlign: "left",
+                              gap: 8,
+                              transition: "background 0.1s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.background = isLight ? "#f1f5f9" : "rgba(255,255,255,0.05)";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.background = "transparent";
+                              }
+                            }}
+                          >
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize: "0.8rem",
+                                  fontWeight: 600,
+                                  color: isLight ? "#1e293b" : "#f8fafc",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {g.deceasedName}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "0.7rem",
+                                  color: isLight ? "#64748b" : "#94a3b8",
+                                  marginTop: 1,
+                                }}
+                              >
+                                Plot {g.plotNumber} • Tier {g.tier}
+                              </div>
+                            </div>
+                            {isOccupied && (
+                              <span
+                                style={{
+                                  fontSize: "0.62rem",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                  background: isLight ? "#fef3c7" : "rgba(245, 158, 11, 0.2)",
+                                  color: isLight ? "#92400e" : "#fbbf24",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                Transfer
+                              </span>
+                            )}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+
+                <p style={{ margin: "4px 0 0", fontSize: "0.68rem", color: isLight ? "#94a3b8" : "#64748b" }}>
+                  Selecting an occupied grave will transfer it to this tier.
+                </p>
+              </div>
+
+              {/* Selected grave preview */}
+              {selectedGrave && (
+                <div
+                  style={{
+                    background: isLight ? "#f8fafc" : "rgba(255, 255, 255, 0.04)",
+                    border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    fontSize: "0.78rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: isLight ? "#1e293b" : "#f8fafc" }}>
+                    {selectedGrave.deceasedName}
+                  </div>
+                  <div style={{ color: isLight ? "#64748b" : "#94a3b8" }}>
+                    Currently: Plot {selectedGrave.plotNumber}, Tier {selectedGrave.tier}
+                  </div>
+                  <div style={{ color: isLight ? "#64748b" : "#94a3b8" }}>
+                    Will move to: Plot {activePlot?.plotNumber}, Tier {currentTier?.tier}
+                  </div>
+                  {selectedGrave.status === "active" && (
+                    <div style={{ color: "#f59e0b", fontWeight: 600, fontSize: "0.72rem" }}>
+                      This grave is currently occupied and will be transferred.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {occupyError && (
+                <div
+                  style={{
+                    color: "#ef4444",
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                    padding: "8px 10px",
+                    background: isLight ? "#fef2f2" : "rgba(239, 68, 68, 0.1)",
+                    borderRadius: 6,
+                    border: isLight ? "1px solid #fecaca" : "1px solid rgba(239, 68, 68, 0.2)",
+                  }}
+                >
+                  {occupyError}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <div style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  onClick={() => setShowOccupyModal(false)}
+                  disabled={occupying}
+                  style={{
+                    padding: "7px 14px",
+                    fontSize: "0.74rem",
+                    fontWeight: 600,
+                    borderRadius: 6,
+                    border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255, 255, 255, 0.15)",
+                    background: isLight ? "#f1f5f9" : "#1e293b",
+                    color: isLight ? "#1e293b" : "#f8fafc",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!selectedGraveId) {
+                      setOccupyError("Please select a grave");
+                      return;
+                    }
+                    setOccupying(true);
+                    setOccupyError("");
+                    try {
+                      const res = await fetch(`/api/graves/${selectedGraveId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          plotId: activePlot.id,
+                          tier: currentTier?.tier || 1,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        throw new Error(data.error?.message || data.error || "Failed to transfer grave");
+                      }
+                      // Update local plot state
+                      const updatedPlot = JSON.parse(JSON.stringify(activePlot));
+                      if (!updatedPlot.graves) updatedPlot.graves = [];
+                      // Remove the grave from its old plot in allPlots (handled by parent re-fetch)
+                      // Add it to this plot
+                      updatedPlot.graves.push(data);
+                      updatedPlot.graves.sort((a, b) => a.tier - b.tier);
+                      if (updatedPlot.status === "available") {
+                        updatedPlot.status = "occupied";
+                      }
+                      setLocalPlot(updatedPlot);
+                      if (typeof onUpdatePlot === "function") {
+                        onUpdatePlot(updatedPlot);
+                      }
+                      setShowOccupyModal(false);
+                      toast.success(`${currentTier?.label || "Tier"} occupied successfully`);
+                    } catch (err) {
+                      console.error(err);
+                      setOccupyError(err.message || "Failed to occupy tier");
+                      toast.error(err.message || "Failed to occupy tier");
+                    } finally {
+                      setOccupying(false);
+                    }
+                  }}
+                  disabled={occupying || !selectedGraveId}
+                  style={{
+                    padding: "7px 16px",
+                    fontSize: "0.74rem",
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    border: "none",
+                    background: "#16a34a",
+                    color: "#ffffff",
+                    cursor: occupying || !selectedGraveId ? "default" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    boxShadow: "0 2px 6px rgba(22, 163, 74, 0.4)",
+                    opacity: occupying || !selectedGraveId ? 0.7 : 1,
+                  }}
+                >
+                  <CheckCircle2 size={14} />
+                  <span>{occupying ? "Transferring..." : "Occupy Tier"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

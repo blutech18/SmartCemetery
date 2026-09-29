@@ -14,6 +14,7 @@ import { getClientIp, writeAuditLog } from "@/lib/audit";
 const UPDATE_GRAVE_SCHEMA = {
   deceasedName: { type: "string", trim: true, min: 1, max: 200 },
   plotId: { type: "integer", min: 1 },
+  tier: { type: "integer", min: 1, max: 4 },
 };
 const DETAIL_LIMITS = {
   causeOfDeath: 5000,
@@ -21,7 +22,7 @@ const DETAIL_LIMITS = {
   contactPhone: 100,
   notes: 10000,
 };
-const CORE_FIELDS = ["deceasedName", "plotId", "burialDate"];
+const CORE_FIELDS = ["deceasedName", "plotId", "burialDate", "tier"];
 const DETAIL_FIELDS = Object.keys(DETAIL_LIMITS);
 const ALLOWED_FIELDS = [...CORE_FIELDS, ...DETAIL_FIELDS];
 
@@ -144,21 +145,40 @@ export async function PATCH(request, { params }) {
       if (existing.status === "archived") return { error: "archived" };
 
       const nextPlotId = validation.value.plotId;
+      const nextTier = validation.value.tier ?? existing.tier ?? 1;
       const movingPlots = nextPlotId !== undefined && nextPlotId !== existing.plotId;
+      const changingTier = validation.value.tier !== undefined && nextTier !== existing.tier;
+
       if (movingPlots) {
+        // For multi-tier plots, check that the specific tier is free
+        const tierTaken = await tx.grave.findFirst({
+          where: { plotId: nextPlotId, tier: nextTier, id: { not: graveId } },
+          select: { id: true },
+        });
+        if (tierTaken) {
+          return { error: "tier_occupied", tier: nextTier };
+        }
+
         const claim = await tx.plot.updateMany({
-          where: { id: nextPlotId, status: "available", graves: { none: {} } },
+          where: { id: nextPlotId, status: "available" },
           data: { status: "occupied" },
         });
-        if (claim.count !== 1) {
-          const target = await tx.plot.findUnique({
-            where: { id: nextPlotId },
-            select: { status: true },
-          });
-          return {
-            error: target ? "plot_unavailable" : "plot_not_found",
-            plotStatus: target?.status,
-          };
+        // Plot may already be occupied by another tier — that's fine
+        const target = await tx.plot.findUnique({
+          where: { id: nextPlotId },
+          select: { status: true },
+        });
+        if (!target) {
+          return { error: "plot_not_found" };
+        }
+      } else if (changingTier) {
+        // Check that the new tier on the same plot is free
+        const tierTaken = await tx.grave.findFirst({
+          where: { plotId: existing.plotId, tier: nextTier, id: { not: graveId } },
+          select: { id: true },
+        });
+        if (tierTaken) {
+          return { error: "tier_occupied", tier: nextTier };
         }
       }
 
@@ -176,7 +196,7 @@ export async function PATCH(request, { params }) {
         });
       }
 
-      const graveData = { ...validation.value };
+      const graveData = { ...validation.value, tier: nextTier };
       if (validation.coreTouched) {
         graveData.verificationStatus = "pending";
         graveData.verifiedAt = null;
@@ -186,12 +206,15 @@ export async function PATCH(request, { params }) {
       await tx.grave.update({ where: { id: graveId }, data: graveData });
 
       if (movingPlots) {
-        const released = await tx.plot.updateMany({
-          where: { id: existing.plotId, status: "occupied", graves: { none: {} } },
-          data: { status: "available" },
+        // Only release the old plot when no other graves remain on it
+        const remainingOnOld = await tx.grave.count({
+          where: { plotId: existing.plotId },
         });
-        if (released.count !== 1) {
-          throw new TransactionConflict(409, "Previous plot could not be released safely");
+        if (remainingOnOld === 0) {
+          await tx.plot.updateMany({
+            where: { id: existing.plotId, status: "occupied" },
+            data: { status: "available" },
+          });
         }
       }
       if (encryptedDetails) {
@@ -225,6 +248,9 @@ export async function PATCH(request, { params }) {
     if (result.error === "plot_not_found") return errorResponse(404, "Plot not found");
     if (result.error === "plot_unavailable") {
       return errorResponse(409, `Plot is currently ${result.plotStatus}`);
+    }
+    if (result.error === "tier_occupied") {
+      return errorResponse(409, `Tier ${result.tier} is already occupied for this plot`);
     }
 
     const responseGrave = result.updated?.details
@@ -271,12 +297,17 @@ export async function DELETE(request, { params }) {
       if (shouldArchive(grave.burialDate, new Date())) return { error: "retention" };
 
       await tx.grave.delete({ where: { id: graveId } });
-      const released = await tx.plot.updateMany({
-        where: { id: grave.plotId, status: "occupied", graves: { none: {} } },
-        data: { status: "available" },
+
+      // Only release the plot when no other graves remain (multi-tier plots
+      // may still have other occupied tiers).
+      const remainingGraves = await tx.grave.count({
+        where: { plotId: grave.plotId, id: { not: graveId } },
       });
-      if (released.count !== 1) {
-        throw new TransactionConflict(409, "Plot could not be released safely");
+      if (remainingGraves === 0) {
+        await tx.plot.updateMany({
+          where: { id: grave.plotId, status: "occupied" },
+          data: { status: "available" },
+        });
       }
       return { deletedId: graveId };
     });

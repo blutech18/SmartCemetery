@@ -123,44 +123,50 @@ export function extractPlotTiers(plot) {
   const isRowPlot = subsection.startsWith("ROW-") || plot.plotNumber?.startsWith("ROW-");
 
   if (isRowPlot) {
-    const hasOccupant = plot.graves?.length > 0 && plot.status === "occupied";
-    const primaryGrave = plot.graves?.[0];
-    const structurePhoto = getGravePhoto(primaryGrave) || plot.photo || null;
-    let notesText = primaryGrave?.details?.notes;
-    let birthDate = null;
-    let deathDate = null;
-    if (notesText) {
-      try {
-        const parsed = JSON.parse(notesText);
-        notesText = parsed.text || parsed.notes || null;
-        birthDate = parsed.birthDate || parsed.dateOfBirth || primaryGrave.birthDate || primaryGrave.details?.birthDate || null;
-        deathDate = parsed.deathDate || parsed.dateOfDeath || primaryGrave.deathDate || primaryGrave.details?.deathDate || null;
-      } catch {
-        // plain text notes
-      }
+    const gravesByTier = new Map();
+    for (const g of plot.graves || []) {
+      gravesByTier.set(g.tier, g);
     }
-    return [
-      { tier: 4, label: "Tier 4 (Top Level)", status: "available", photo: structurePhoto },
-      { tier: 3, label: "Tier 3 (Upper Level)", status: "available", photo: structurePhoto },
-      {
-        tier: 2,
-        label: "Tier 2 (Second Level)",
-        status: plot.status === "reserved" ? "reserved" : "available",
-        photo: structurePhoto,
-      },
-      {
-        tier: 1,
-        label: "Tier 1 (Ground Level)",
-        deceasedName: hasOccupant ? primaryGrave.deceasedName : null,
-        birthDate: hasOccupant ? birthDate : null,
-        deathDate: hasOccupant ? deathDate : null,
-        burialDate: hasOccupant ? primaryGrave.burialDate : null,
-        causeOfDeath: primaryGrave?.details?.causeOfDeath || null,
-        contactPerson: primaryGrave?.details?.contactPerson || null,
-        status: hasOccupant ? "occupied" : "available",
-        photo: hasOccupant ? structurePhoto : null,
+
+    const buildTier = (tierNum, label) => {
+      const g = gravesByTier.get(tierNum);
+      if (!g) {
+        return { tier: tierNum, label, status: "available", photo: null };
+      }
+      const photo = getGravePhoto(g);
+      let notesText = g.details?.notes;
+      let birthDate = null;
+      let deathDate = null;
+      if (notesText) {
+        try {
+          const parsed = JSON.parse(notesText);
+          notesText = parsed.text || parsed.notes || null;
+          birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
+          deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
+        } catch {
+          // plain text notes
+        }
+      }
+      return {
+        tier: tierNum,
+        label,
+        deceasedName: g.deceasedName,
+        birthDate,
+        deathDate,
+        burialDate: g.burialDate,
+        status: g.status === "active" ? "occupied" : g.status || "occupied",
+        causeOfDeath: g.details?.causeOfDeath,
+        contactPerson: g.details?.contactPerson,
         notes: notesText,
-      },
+        photo,
+      };
+    };
+
+    return [
+      buildTier(4, "Tier 4 (Top Level)"),
+      buildTier(3, "Tier 3 (Upper Level)"),
+      buildTier(2, "Tier 2 (Second Level)"),
+      buildTier(1, "Tier 1 (Ground Level)"),
     ];
   }
 

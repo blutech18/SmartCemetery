@@ -50,6 +50,7 @@ describe("plot-format", () => {
       graves: [
         {
           id: 1,
+          tier: 1,
           deceasedName: "Real Person",
           burialDate: "2020-01-01",
           details: { causeOfDeath: "x", contactPerson: "Kin" },

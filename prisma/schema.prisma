@@ -103,7 +103,8 @@ model Plot {
 
 model Grave {
   id                 Int       @id @default(autoincrement())
-  plotId             Int       @unique @map("plot_id")
+  plotId             Int       @map("plot_id")
+  tier               Int       @default(1)
   deceasedName       String    @map("deceased_name") @db.VarChar(200)
   burialDate         DateTime? @map("burial_date")
   status             String    @default("active") @db.VarChar(20)
@@ -119,6 +120,7 @@ model Grave {
   details    GraveDetail?
   verifiedBy User?        @relation("GraveVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
 
+  @@unique([plotId, tier])
   @@index([burialDate])
   @@index([status, verificationStatus])
   @@map("graves")

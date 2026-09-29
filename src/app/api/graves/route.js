@@ -67,6 +67,7 @@ function exposeGraveDetails(grave, authorized) {
 const CREATE_GRAVE_SCHEMA = {
   deceasedName: { required: true, type: "string", trim: true, max: 200 },
   plotId: { required: true, type: "integer" },
+  tier: { type: "integer", min: 1, max: 4 },
 };
 
 // Optional sensitive detail fields accepted on creation. Bounds mirror the
@@ -202,7 +203,7 @@ export async function POST(request) {
     if (!validation.valid) {
       return validationErrorResponse(validation.errors);
     }
-    const { deceasedName, plotId } = validation.value;
+    const { deceasedName, plotId, tier = 1 } = validation.value;
 
     // Validate optional detail fields before they reach encryption/Prisma.
     const detailValidation = validateBody(body, CREATE_GRAVE_DETAILS_SCHEMA);
@@ -281,32 +282,44 @@ export async function POST(request) {
       }
     }
 
-    // Claim the plot and create its grave in the same transaction. updateMany
-    // performs a compare-and-set on status, so concurrent requests cannot both
-    // claim an available plot. The DB unique constraint on Grave.plotId is the
-    // final invariant if a plot status ever becomes inconsistent.
+    // Claim the plot and create its grave in the same transaction. For
+    // multi-tier plots (e.g. 4-tier crypt stacks) the plot may already be
+    // "occupied" by another tier's grave — only the specific (plotId, tier)
+    // pair must be free. The DB unique constraint on (plot_id, tier) is the
+    // final invariant.
     const transactionResult = await prisma.$transaction(async (tx) => {
-      const claim = await tx.plot.updateMany({
-        where: { id: plotId, status: "available" },
-        data: { status: "occupied" },
+      const existingPlot = await tx.plot.findUnique({
+        where: { id: plotId },
+        select: { id: true, status: true },
       });
+      if (!existingPlot) {
+        return { claimError: { status: 404, message: "Plot not found" } };
+      }
 
-      if (claim.count !== 1) {
-        const existingPlot = await tx.plot.findUnique({
-          where: { id: plotId },
-          select: { status: true },
-        });
+      // Check if this specific tier is already taken
+      const existingGrave = await tx.grave.findFirst({
+        where: { plotId, tier },
+        select: { id: true },
+      });
+      if (existingGrave) {
         return {
-          claimError: existingPlot
-            ? { status: 409, message: `Plot is currently ${existingPlot.status}` }
-            : { status: 404, message: "Plot not found" },
+          claimError: { status: 409, message: `Tier ${tier} is already occupied for this plot` },
         };
+      }
+
+      // Only transition plot status if it's still available
+      if (existingPlot.status === "available") {
+        await tx.plot.update({
+          where: { id: plotId },
+          data: { status: "occupied" },
+        });
       }
 
       const newGrave = await tx.grave.create({
         data: {
           deceasedName,
           plotId,
+          tier,
           burialDate: burialDate ? new Date(burialDate) : null,
           status: "active",
         },
