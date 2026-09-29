@@ -175,7 +175,14 @@ function MapPageInner() {
 
   const handleUpdateBoundaryOffsets = useCallback(
     (newOffsets) => {
-      setBoundaryOffsets(newOffsets);
+      setBoundaryOffsets((prev) => {
+        const isSame =
+          Array.isArray(prev) &&
+          Array.isArray(newOffsets) &&
+          prev.length === newOffsets.length &&
+          prev.every((o, i) => Math.abs(o.dx - newOffsets[i].dx) < 0.01 && Math.abs(o.dy - newOffsets[i].dy) < 0.01);
+        return isSame ? prev : newOffsets;
+      });
       try {
         localStorage.setItem("cmp_custom_boundary_offsets", JSON.stringify(newOffsets));
       } catch {
@@ -312,11 +319,16 @@ function MapPageInner() {
     scrollToMap();
   }, [scrollToMap]);
 
+  const lastHandledTargetRef = useRef("");
+
   // Deep-link: /dashboard/map?plot=<id|plotNumber> or ?q=<term>
   useEffect(() => {
     const target = searchParams.get("plot");
     const q = searchParams.get("q");
     if ((!target && !q) || !plots.length) return;
+
+    const key = `${target || ""}:${q || ""}`;
+    if (lastHandledTargetRef.current === key) return;
 
     let plot = null;
     if (target) {
@@ -333,11 +345,13 @@ function MapPageInner() {
     }
     if (!plot) return;
 
+    lastHandledTargetRef.current = key;
+
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
       if (hasGps(plot)) {
-        setDetailsPlot(plot);
+        setDetailsPlot((prev) => (prev?.id === plot.id ? prev : plot));
         setDrawerCollapsed(false);
       } else if (isAdmin) {
         startPlacing(plot);
@@ -359,9 +373,16 @@ function MapPageInner() {
     }, 100);
   }, [setToast]);
 
+  const lastHandledLocateRef = useRef(false);
+
   // Deep-link: /dashboard/map?locate=bolonsiri
   useEffect(() => {
-    if (searchParams.get("locate") !== "bolonsiri") return undefined;
+    if (searchParams.get("locate") !== "bolonsiri") {
+      lastHandledLocateRef.current = false;
+      return undefined;
+    }
+    if (lastHandledLocateRef.current) return undefined;
+    lastHandledLocateRef.current = true;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;

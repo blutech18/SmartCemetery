@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Search,
   Camera,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import NavigationOverlay from "./NavigationOverlay";
@@ -159,10 +160,16 @@ export default function PlotDetailsDrawer({
   // Reset the selected tier when a different plot is selected or on mount.
   // Defaults to the occupied tier or matching search occupant.
   useEffect(() => {
-    if (!activePlot || activePlot.id === lastPlotIdRef.current) return;
-    lastPlotIdRef.current = activePlot.id;
+    if (!activePlot) {
+      lastPlotIdRef.current = null;
+      return;
+    }
+    const plotKey = activePlot.id != null ? String(activePlot.id) : (activePlot.plotNumber || "unknown");
+    if (plotKey === lastPlotIdRef.current) return;
+    lastPlotIdRef.current = plotKey;
     const q = (debouncedQuery || searchQuery || "").trim().toLowerCase();
-    setSelectedTierIndex(getInitialTierIndex(tiers, q));
+    const nextIdx = getInitialTierIndex(tiers, q);
+    setSelectedTierIndex((prev) => (prev === nextIdx ? prev : nextIdx));
   }, [activePlot, tiers, debouncedQuery, searchQuery]);
 
   const currentTier = tiers[selectedTierIndex] || tiers[0] || null;
@@ -314,7 +321,7 @@ export default function PlotDetailsDrawer({
           pointerEvents: isCollapsed ? "none" : "auto",
         }}
       >
-        {/* Top Header: Selected Name Banner OR Search Bar when no plot is selected */}
+        {/* Top Header: Always Consistent Search Bar */}
         <div
           style={{
             padding: "10px 14px",
@@ -325,118 +332,103 @@ export default function PlotDetailsDrawer({
             gap: 8,
           }}
         >
-          {plot ? (
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "7px 12px",
-                background: isLight ? "#ffffff" : "rgba(255, 255, 255, 0.06)",
-                border: isLight ? "1px solid #d1d5db" : "1px solid rgba(255, 255, 255, 0.15)",
-                borderRadius: 6,
-                boxShadow: isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.92rem",
-                  fontWeight: 600,
-                  color: isLight ? "#111827" : "#f8fafc",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {currentTier?.deceasedName || plot?.plotNumber || "Plot Details"}
-              </span>
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              background: isLight ? "#f9fafb" : "rgba(255, 255, 255, 0.05)",
+              border: isLight ? "1.5px solid #cbd5e1" : "1.5px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: 8,
+              padding: "6px 10px",
+              boxShadow: isLight ? "0 1px 2px rgba(0, 0, 0, 0.04)" : "none",
+              transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+            }}
+          >
+            {activePlot && !searchQuery ? (
               <button
                 type="button"
                 onClick={() => {
                   if (typeof onSelectPlot === "function") {
                     onSelectPlot(null);
                   }
+                  setLocalPlot(null);
+                  setSearchQuery("");
                 }}
-                title="Deselect plot & search"
+                title="Back to cemetery overview"
+                aria-label="Back to cemetery overview"
                 style={{
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
-                  color: isLight ? "#9ca3af" : "#94a3b8",
+                  color: isLight ? "#0284c7" : "#38bdf8",
+                  padding: 2,
+                  marginRight: 6,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: 2,
-                  marginLeft: 8,
+                  borderRadius: 4,
+                  flexShrink: 0,
                 }}
               >
-                <X size={16} />
+                <ArrowLeft size={16} />
               </button>
-            </div>
-          ) : (
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                background: isLight ? "#f9fafb" : "rgba(255, 255, 255, 0.05)",
-                border: isLight ? "1.5px solid #0284c7" : "1.5px solid #38bdf8",
-                borderRadius: 6,
-                padding: "5px 10px",
-                boxShadow: isLight ? "0 1px 3px rgba(2, 132, 199, 0.08)" : "none",
-              }}
-            >
+            ) : (
               <Search
                 size={16}
                 style={{
-                  color: isLight ? "#0284c7" : "#38bdf8",
+                  color: isLight ? "#64748b" : "#94a3b8",
                   marginRight: 8,
                   flexShrink: 0,
                 }}
               />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search deceased or plot #..."
-                aria-label="Search deceased or plot number"
-                autoFocus={isOpen}
+            )}
+
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search deceased or plot #..."
+              aria-label="Search deceased or plot number"
+              style={{
+                flex: 1,
+                border: "none",
+                background: "transparent",
+                outline: "none",
+                fontSize: "0.88rem",
+                color: isLight ? "#111827" : "#f8fafc",
+                padding: 0,
+                minWidth: 0,
+              }}
+            />
+
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                title="Clear search"
+                aria-label="Clear search"
                 style={{
-                  flex: 1,
+                  background: "none",
                   border: "none",
-                  background: "transparent",
-                  outline: "none",
-                  fontSize: "0.88rem",
-                  color: isLight ? "#111827" : "#f8fafc",
-                  padding: 0,
+                  cursor: "pointer",
+                  color: isLight ? "#9ca3af" : "#94a3b8",
+                  padding: 2,
+                  display: "flex",
+                  alignItems: "center",
+                  flexShrink: 0,
                 }}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  title="Clear search"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: isLight ? "#9ca3af" : "#94a3b8",
-                    padding: 2,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          )}
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
 
           <button
             type="button"
             onClick={onClose}
             title="Close drawer"
+            aria-label="Close drawer"
             style={{
               background: "transparent",
               border: "none",
@@ -447,6 +439,7 @@ export default function PlotDetailsDrawer({
               justifyContent: "center",
               padding: 4,
               marginLeft: 4,
+              flexShrink: 0,
             }}
           >
             <X size={18} />
@@ -462,7 +455,7 @@ export default function PlotDetailsDrawer({
             flexDirection: "column",
           }}
         >
-          {activePlot ? (
+          {activePlot && !searchQuery.trim() ? (
             <>
               {/* Photo: Cemetery Memorial Headstone / Monument */}
               <div
@@ -1007,6 +1000,7 @@ export default function PlotDetailsDrawer({
                         if (typeof onSelectPlot === "function") {
                           onSelectPlot(resultPlot);
                         }
+                        setSearchQuery("");
                       }}
                       style={{
                         padding: "10px 12px",

@@ -247,6 +247,7 @@ const CONTAINER_STYLE = { width: "100%", height: "100%" };
 
 const BASE_OPTIONS = {
   mapTypeId: "hybrid",
+  zoom: 20,
   disableDefaultUI: false,
   mapTypeControl: false,
   streetViewControl: false,
@@ -907,11 +908,14 @@ function GoogleMapLoadedView({
     setMapsReady(false);
   }, []);
 
-  // Update zoom level state on zoom_changed
+  // Update zoom level state on zoom_changed (only on meaningful change to avoid render loops)
   useEffect(() => {
     if (!map) return;
     const listener = map.addListener("zoom_changed", () => {
-      setZoomLevel(map.getZoom() || 19);
+      const z = map.getZoom();
+      if (typeof z === "number") {
+        setZoomLevel((prev) => (Math.abs(prev - z) >= 0.2 ? z : prev));
+      }
     });
     return () => {
       if (window.google?.maps?.event) {
@@ -920,12 +924,22 @@ function GoogleMapLoadedView({
     };
   }, [map]);
 
+  const lastFocusPosRef = useRef(null);
+
   // Smoothly recenter when focusPoint changes
   useEffect(() => {
     if (!map || !focusPoint) return;
     if (Number.isFinite(focusPoint.lat) && Number.isFinite(focusPoint.lng)) {
+      const prev = lastFocusPosRef.current;
+      if (prev && Math.abs(prev.lat - focusPoint.lat) < 1e-6 && Math.abs(prev.lng - focusPoint.lng) < 1e-6) {
+        return;
+      }
+      lastFocusPosRef.current = { lat: focusPoint.lat, lng: focusPoint.lng };
       map.panTo({ lat: focusPoint.lat, lng: focusPoint.lng });
-      map.setZoom(Math.max(map.getZoom() || 0, 20));
+      const currentZoom = map.getZoom() || 0;
+      if (currentZoom < 20) {
+        map.setZoom(20);
+      }
     }
   }, [focusPoint, map]);
 
@@ -1025,9 +1039,9 @@ function GoogleMapLoadedView({
 
   const polygonRef = useRef(null);
 
-  // Sync edits from the map to state
+  // Sync edits from the map to state — only when user is actively editing boundary lines
   const handlePolygonPathChange = useCallback(() => {
-    if (!polygonRef.current || !onUpdateBoundaryOffsets) return;
+    if (!polygonRef.current || !onUpdateBoundaryOffsets || !editBoundaryLines) return;
     const path = polygonRef.current.getPath();
     if (!path || path.getLength() === 0) return;
     const newCoords = [];
@@ -1036,21 +1050,42 @@ function GoogleMapLoadedView({
       newCoords.push({ lat: pt.lat(), lng: pt.lng() });
     }
     const newOffsets = coordsToBoundaryOffsets(newCoords, cmpCenter.lat, cmpCenter.lng, gridAngle ?? 37.7);
-    onUpdateBoundaryOffsets(newOffsets);
-  }, [cmpCenter.lat, cmpCenter.lng, gridAngle, onUpdateBoundaryOffsets]);
 
-  const handlePolygonLoad = useCallback(
-    (poly) => {
-      polygonRef.current = poly;
-      const path = poly.getPath();
-      if (path) {
-        path.addListener("set_at", handlePolygonPathChange);
-        path.addListener("insert_at", handlePolygonPathChange);
-        path.addListener("remove_at", handlePolygonPathChange);
+    // Guard against recursive state update loops: only update if offsets actually changed significantly (> 5cm)
+    const currentOffsets = Array.isArray(boundaryOffsets) && boundaryOffsets.length >= 3 ? boundaryOffsets : CMP_BOUNDARY_OFFSETS_METERS;
+    const hasMeaningfulChange =
+      newOffsets.length !== currentOffsets.length ||
+      newOffsets.some((o, idx) => {
+        const prev = currentOffsets[idx];
+        return !prev || Math.abs(o.dx - prev.dx) > 0.05 || Math.abs(o.dy - prev.dy) > 0.05;
+      });
+
+    if (!hasMeaningfulChange) return;
+    onUpdateBoundaryOffsets(newOffsets);
+  }, [cmpCenter.lat, cmpCenter.lng, gridAngle, onUpdateBoundaryOffsets, editBoundaryLines, boundaryOffsets]);
+
+  const handlePolygonLoad = useCallback((poly) => {
+    polygonRef.current = poly;
+  }, []);
+
+  // Attach vertex listeners ONLY when editBoundaryLines is actively enabled by the user
+  useEffect(() => {
+    if (!editBoundaryLines || !polygonRef.current) return;
+    const path = polygonRef.current.getPath();
+    if (!path) return;
+
+    const l1 = path.addListener("set_at", handlePolygonPathChange);
+    const l2 = path.addListener("insert_at", handlePolygonPathChange);
+    const l3 = path.addListener("remove_at", handlePolygonPathChange);
+
+    return () => {
+      if (window.google?.maps?.event) {
+        window.google.maps.event.removeListener(l1);
+        window.google.maps.event.removeListener(l2);
+        window.google.maps.event.removeListener(l3);
       }
-    },
-    [handlePolygonPathChange]
-  );
+    };
+  }, [editBoundaryLines, handlePolygonPathChange]);
 
   // Dragging the blue boundary polygon directly also moves the plots inside it
   const handlePolygonDragEnd = useCallback(() => {
@@ -1520,14 +1555,10 @@ function GoogleMapLoadedView({
       <GoogleMap
         mapContainerStyle={CONTAINER_STYLE}
         center={center}
-        zoom={zoomLevel}
         mapTypeId={mapTypeId}
         options={options}
         onLoad={onLoad}
         onUnmount={onUnmount}
-        onZoomChanged={() => {
-          if (map) setZoomLevel(map.getZoom() || 20);
-        }}
         onClick={handleMapClick}
       >
         {/* Navigation Polyline */}
