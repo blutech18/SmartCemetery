@@ -182,9 +182,6 @@ export async function GET(request) {
     if (error instanceof EncryptionKeyError) {
       return encryptionErrorResponse("Encryption key is unavailable or invalid");
     }
-    if (error instanceof DecryptionError) {
-      return encryptionErrorResponse("A stored value could not be decrypted");
-    }
     console.error("GET /api/graves error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

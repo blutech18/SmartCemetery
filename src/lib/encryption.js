@@ -178,16 +178,32 @@ export function encryptGraveDetail(detail) {
 /**
  * Decrypt classified fields with the row key version. Legacy plaintext notes
  * remain readable until the resumable rotation command encrypts them.
+ *
+ * If a field cannot be decrypted (e.g. key mismatch between environments),
+ * that field is returned as null rather than crashing the entire request.
+ * This keeps the rest of the record usable for verification/display.
  */
 export function decryptGraveDetail(detail) {
   if (detail === null || detail === undefined) return detail;
   const result = { ...detail };
   const version = detail.encryptionKeyVersion || "v1";
   for (const field of SENSITIVE_GRAVE_FIELDS) {
-    if (field in result) result[field] = decryptField(result[field], version);
+    if (field in result) {
+      try {
+        result[field] = decryptField(result[field], version);
+      } catch {
+        // Key mismatch or corrupted value — return null so the rest of the
+        // record remains accessible (e.g. deceasedName, burialDate, plot).
+        result[field] = null;
+      }
+    }
   }
   if (result.notesEncrypted && "notes" in result) {
-    result.notes = decryptField(result.notes, version);
+    try {
+      result.notes = decryptField(result.notes, version);
+    } catch {
+      result.notes = null;
+    }
   }
   return result;
 }
