@@ -84,13 +84,15 @@ export function getServerRoutingConfig(env = process.env) {
   };
 }
 
-function assertWithinCemeteryRadius(coords, config) {
-  for (const [label, point] of Object.entries(coords)) {
-    if (distanceMeters(config.center, point) > config.radiusMeters) {
-      throw new RoutingServiceError(400, "OUTSIDE_CEMETERY_AREA", `${label} is outside the supported cemetery area.`);
-    }
+function assertWithinCemeteryRadius({ destination }, config) {
+  // Only the destination (plot GPS) must be within the cemetery boundary.
+  // The user's origin is their real-world location and can be anywhere —
+  // restricting it would break navigation for anyone not already on-site.
+  if (distanceMeters(config.center, destination) > config.radiusMeters) {
+    throw new RoutingServiceError(400, "OUTSIDE_CEMETERY_AREA", "destination is outside the supported cemetery area.");
   }
 }
+
 
 function safeRoute(providerData) {
   const route = providerData?.routes?.[0];
