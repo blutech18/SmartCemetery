@@ -14,7 +14,6 @@ import {
   Info,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 
 function formatGps(lat, lng) {
   if (lat === null || lat === undefined || lng === null || lng === undefined) {
@@ -81,8 +80,8 @@ export default function VerificationPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [workingId, setWorkingId] = useState(null);
-  const [notes, setNotes] = useState({});
   const [pendingReject, setPendingReject] = useState(null);
+  const [rejectNote, setRejectNote] = useState("");
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -135,14 +134,14 @@ export default function VerificationPage() {
     void Promise.resolve().then(loadRecords);
   }, [loadRecords]);
 
-  async function updateVerification(record, status) {
+  async function updateVerification(record, status, noteToSend) {
     setWorkingId(record.id);
     setError("");
     try {
       const response = await fetch(`/api/graves/${record.id}/verify`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, note: notes[record.id] || undefined }),
+        body: JSON.stringify({ status, note: noteToSend || undefined }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -156,7 +155,6 @@ export default function VerificationPage() {
       toast.success(
         `Record for ${record.deceasedName || `grave #${record.id}`} marked as ${status}`
       );
-      setNotes((current) => ({ ...current, [record.id]: "" }));
       await loadRecords();
     } catch (err) {
       setError(err.message || "Verification failed");
@@ -305,124 +303,90 @@ export default function VerificationPage() {
                   <th>Plot</th>
                   <th>Location</th>
                   <th>Burial Date</th>
-                  <th>Plot GPS</th>
-                  <th>Status</th>
-                  <th style={{ minWidth: "170px" }}>Review Note</th>
-                  <th style={{ textAlign: "right", minWidth: "180px" }}>Actions</th>
+                  <th style={{ textAlign: "right", minWidth: "160px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRecords.map((record) => {
-                  const gps = getPlotGps(record);
-                  return (
-                    <tr key={record.id}>
-                      <td>
-                        <div className="flex items-center gap-xs">
-                          <div>
-                            <div style={{ fontWeight: 600 }}>
-                              {record.deceasedName?.trim() || "Unnamed record"}
-                            </div>
-                            <div className="text-xs text-muted">
-                              Grave #{record.id}
-                              {record.details?.contactPerson &&
-                                ` · ${record.details.contactPerson}`}
-                            </div>
+                {filteredRecords.map((record) => (
+                  <tr key={record.id}>
+                    <td>
+                      <div className="flex items-center gap-xs">
+                        <div>
+                          <div style={{ fontWeight: 600 }}>
+                            {record.deceasedName?.trim() || "Unnamed record"}
                           </div>
-                          {(record.details?.notes ||
-                            record.details?.causeOfDeath) && (
-                            <button
-                              type="button"
-                              className="action-btn"
-                              title="View full record details"
-                              onClick={() => setSelectedRecord(record)}
-                              style={{ padding: 4, marginLeft: 4 }}
-                            >
-                              <Info size={14} className="text-muted" />
-                            </button>
-                          )}
+                          <div className="text-xs text-muted">
+                            Grave #{record.id}
+                            {record.details?.contactPerson &&
+                              ` · ${record.details.contactPerson}`}
+                          </div>
                         </div>
-                      </td>
-                      <td>
-                        <span className="badge badge-primary">
-                          {getPlotNumber(record)}
-                        </span>
-                      </td>
-                      <td className="text-sm">{getLocationName(record)}</td>
-                      <td className="text-sm">{formatDate(record.burialDate)}</td>
-                      <td className="text-sm font-mono" style={{ fontSize: "0.8rem" }}>
-                        {formatGps(gps.lat, gps.lng)}
-                      </td>
-                      <td>
-                        <span className="badge badge-warning">
-                          {record.verificationStatus || "pending"}
-                        </span>
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          className="form-input"
-                          maxLength={500}
+                        <button
+                          type="button"
+                          className="action-btn"
+                          title="View record review details"
+                          onClick={() => setSelectedRecord(record)}
+                          style={{ padding: 4, marginLeft: 4 }}
+                        >
+                          <Info size={14} className="text-muted" />
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                        {getPlotNumber(record)}
+                      </span>
+                    </td>
+                    <td className="text-sm">{getLocationName(record)}</td>
+                    <td className="text-sm">{formatDate(record.burialDate)}</td>
+                    <td>
+                      <div
+                        className="flex action-buttons"
+                        style={{
+                          justifyContent: "flex-end",
+                          alignItems: "center",
+                          gap: "0.4rem",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={workingId === record.id}
+                          onClick={() => updateVerification(record, "verified")}
                           style={{
-                            padding: "0.35rem 0.65rem",
-                            fontSize: "0.82rem",
-                            width: "100%",
-                          }}
-                          placeholder="Optional review note..."
-                          value={notes[record.id] || ""}
-                          onChange={(e) =>
-                            setNotes((prev) => ({
-                              ...prev,
-                              [record.id]: e.target.value,
-                            }))
-                          }
-                        />
-                      </td>
-                      <td>
-                        <div
-                          className="flex action-buttons"
-                          style={{
-                            justifyContent: "flex-end",
+                            display: "inline-flex",
                             alignItems: "center",
-                            gap: "0.4rem",
+                            gap: "0.35rem",
+                            padding: "0.35rem 0.75rem",
+                            fontSize: "0.8rem",
                           }}
                         >
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            disabled={workingId === record.id}
-                            onClick={() => updateVerification(record, "verified")}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.35rem",
-                              padding: "0.35rem 0.7rem",
-                              fontSize: "0.8rem",
-                            }}
-                          >
-                            <CheckCircle size={14} />
-                            <span>Verify</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-sm"
-                            disabled={workingId === record.id}
-                            onClick={() => setPendingReject(record)}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.35rem",
-                              padding: "0.35rem 0.65rem",
-                              fontSize: "0.8rem",
-                            }}
-                          >
-                            <XCircle size={14} />
-                            <span>Reject</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                          <CheckCircle size={14} />
+                          <span>Verify</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          disabled={workingId === record.id}
+                          onClick={() => {
+                            setPendingReject(record);
+                            setRejectNote("");
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
+                            padding: "0.35rem 0.65rem",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          <XCircle size={14} />
+                          <span>Reject</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -452,9 +416,7 @@ export default function VerificationPage() {
                   <th>Plot</th>
                   <th>Burial Date</th>
                   <th>Missing Requirements</th>
-                  <th>Status</th>
-                  <th style={{ minWidth: "170px" }}>Review Note</th>
-                  <th style={{ textAlign: "right", minWidth: "220px" }}>Actions</th>
+                  <th style={{ textAlign: "right", minWidth: "180px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -471,7 +433,7 @@ export default function VerificationPage() {
                       </div>
                     </td>
                     <td>
-                      <span className="badge badge-primary">
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
                         {getPlotNumber(record)}
                       </span>
                     </td>
@@ -484,37 +446,6 @@ export default function VerificationPage() {
                           </span>
                         ))}
                       </div>
-                    </td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          record.verificationStatus === "rejected"
-                            ? "badge-danger"
-                            : "badge-warning"
-                        }`}
-                      >
-                        {record.verificationStatus || "pending"}
-                      </span>
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        className="form-input"
-                        maxLength={500}
-                        style={{
-                          padding: "0.35rem 0.65rem",
-                          fontSize: "0.82rem",
-                          width: "100%",
-                        }}
-                        placeholder="Document review / correction..."
-                        value={notes[record.id] || ""}
-                        onChange={(e) =>
-                          setNotes((prev) => ({
-                            ...prev,
-                            [record.id]: e.target.value,
-                          }))
-                        }
-                      />
                     </td>
                     <td>
                       <div
@@ -546,7 +477,10 @@ export default function VerificationPage() {
                           type="button"
                           className="btn btn-danger btn-sm"
                           disabled={workingId === record.id}
-                          onClick={() => setPendingReject(record)}
+                          onClick={() => {
+                            setPendingReject(record);
+                            setRejectNote("");
+                          }}
                           title="Reject record"
                           style={{
                             display: "inline-flex",
@@ -585,7 +519,7 @@ export default function VerificationPage() {
         )
       )}
 
-      {/* Detail Modal */}
+      {/* Record Review Details Modal */}
       {selectedRecord && (
         <div
           className="modal-overlay"
@@ -594,7 +528,7 @@ export default function VerificationPage() {
         >
           <div
             className="modal"
-            style={{ maxWidth: 560 }}
+            style={{ maxWidth: 540 }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
@@ -606,13 +540,16 @@ export default function VerificationPage() {
                 ✕
               </button>
             </div>
-            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <div
+              className="modal-body"
+              style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+            >
               <div>
                 <h4 style={{ margin: "0 0 4px 0", fontSize: "1.15rem" }}>
                   {selectedRecord.deceasedName || "Unnamed"}
                 </h4>
                 <p className="text-sm text-muted" style={{ margin: 0 }}>
-                  Grave #{selectedRecord.id} · {getPlotNumber(selectedRecord)} (
+                  Grave #{selectedRecord.id} · Plot {getPlotNumber(selectedRecord)} (
                   {getLocationName(selectedRecord)})
                 </p>
               </div>
@@ -625,6 +562,7 @@ export default function VerificationPage() {
                   background: "var(--bg-glass, rgba(241, 245, 249, 0.45))",
                   padding: "0.75rem",
                   borderRadius: "var(--radius-md, 8px)",
+                  border: "1px solid var(--border-default, #e2e8f0)",
                   fontSize: "0.85rem",
                 }}
               >
@@ -636,7 +574,7 @@ export default function VerificationPage() {
                 </div>
                 <div>
                   <span className="text-muted" style={{ fontSize: "0.75rem", display: "block" }}>
-                    GPS Coordinates
+                    Plot GPS Coordinates
                   </span>
                   <strong>
                     {formatGps(
@@ -670,42 +608,147 @@ export default function VerificationPage() {
                     <span className="text-muted" style={{ fontSize: "0.75rem", display: "block" }}>
                       Memorial Notes
                     </span>
-                    <span>{selectedRecord.details.notes}</span>
+                    <span style={{ whiteSpace: "pre-wrap" }}>
+                      {selectedRecord.details.notes}
+                    </span>
                   </div>
                 )}
               </div>
             </div>
-            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div
+              className="modal-footer"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn btn-ghost"
                 onClick={() => setSelectedRecord(null)}
               >
                 Close
               </button>
+              <div className="flex gap-sm">
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    const rec = selectedRecord;
+                    setSelectedRecord(null);
+                    setPendingReject(rec);
+                    setRejectNote("");
+                  }}
+                >
+                  <XCircle size={14} /> Reject
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={async () => {
+                    const rec = selectedRecord;
+                    setSelectedRecord(null);
+                    await updateVerification(rec, "verified");
+                  }}
+                >
+                  <CheckCircle size={14} /> Verify Record
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Reject Confirmation Dialog */}
-      <ConfirmDialog
-        open={Boolean(pendingReject)}
-        title="Reject this record?"
-        description={
-          pendingReject
-            ? `The record for ${pendingReject.deceasedName?.trim() || `grave #${pendingReject.id}`} will be marked as rejected and returned for correction. Any review note entered will be saved with this decision.`
-            : ""
-        }
-        confirmLabel="Reject record"
-        busy={workingId === pendingReject?.id}
-        onConfirm={async () => {
-          const record = pendingReject;
-          await updateVerification(record, "rejected");
-          setPendingReject(null);
-        }}
-        onCancel={() => setPendingReject(null)}
-      />
+      {/* Reject Modal with optional note */}
+      {pendingReject && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!workingId) {
+              setPendingReject(null);
+              setRejectNote("");
+            }
+          }}
+          style={{ zIndex: 1000 }}
+        >
+          <div
+            className="modal"
+            style={{ maxWidth: 460 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: "var(--danger, #ef4444)" }}>
+                Reject Grave Record?
+              </h3>
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setPendingReject(null);
+                  setRejectNote("");
+                }}
+                disabled={Boolean(workingId)}
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              className="modal-body"
+              style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+            >
+              <p className="text-sm" style={{ margin: 0 }}>
+                The record for{" "}
+                <strong>
+                  {pendingReject.deceasedName?.trim() || `grave #${pendingReject.id}`}
+                </strong>{" "}
+                will be marked as rejected and returned for correction.
+              </p>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.82rem" }}>
+                  Reason for Rejection / Correction Instructions (Optional)
+                </label>
+                <textarea
+                  className="form-textarea"
+                  rows={3}
+                  maxLength={500}
+                  value={rejectNote}
+                  onChange={(e) => setRejectNote(e.target.value)}
+                  placeholder="Explain what needs correction..."
+                />
+              </div>
+            </div>
+            <div
+              className="modal-footer"
+              style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}
+            >
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setPendingReject(null);
+                  setRejectNote("");
+                }}
+                disabled={Boolean(workingId)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={Boolean(workingId)}
+                onClick={async () => {
+                  const record = pendingReject;
+                  await updateVerification(record, "rejected", rejectNote);
+                  setPendingReject(null);
+                  setRejectNote("");
+                }}
+              >
+                {workingId === pendingReject.id ? "Rejecting..." : "Confirm Rejection"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -490,11 +490,10 @@ export default function GravesPage() {
             <thead>
               <tr>
                 <th>Deceased Name</th>
-                <th>Burial Date</th>
                 <th>Plot</th>
                 <th>Location</th>
+                <th>Burial Date</th>
                 <th>Status</th>
-                <th>Verification</th>
                 {(isAdmin || canVerify) && <th>Actions</th>}
                 {searchResults?.suggestions?.length > 0 && <th>Match</th>}
               </tr>
@@ -545,38 +544,39 @@ export default function GravesPage() {
                         </div>
                       </div>
                     </td>
-                  <td>
-                    {grave.burialDate
-                      ? new Date(grave.burialDate).toLocaleDateString()
-                      : "—"}
-                  </td>
-                  <td>
-                    <span className="badge badge-primary">
-                      {grave.plot?.plotNumber || "—"}
-                    </span>
-                  </td>
-                  <td className="text-sm">
-                    {grave.plot?.locationDetail?.location?.name || "—"}
-                    {grave.plot?.locationDetail?.subsection &&
-                      ` / ${grave.plot.locationDetail.subsection}`}
-                  </td>
-                  <td>
-                    <span
-                      className={`badge ${
-                        grave.status === "active"
-                          ? "badge-success"
-                          : "badge-muted"
-                      }`}
-                    >
-                      {grave.status}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge ${grave.verificationStatus === "verified" ? "badge-success" : grave.verificationStatus === "rejected" ? "badge-danger" : "badge-warning"}`}>
-                      {grave.verificationStatus || "pending"}
-                    </span>
-                  </td>
-                  {(isAdmin || canVerify) && (
+                    <td>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                        {grave.plot?.plotNumber || "—"}
+                      </span>
+                    </td>
+                    <td className="text-sm">
+                      {grave.plot?.locationDetail?.location?.name || "—"}
+                      {grave.plot?.locationDetail?.subsection &&
+                        ` / ${grave.plot.locationDetail.subsection}`}
+                    </td>
+                    <td>
+                      {grave.burialDate
+                        ? new Date(grave.burialDate).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td>
+                      {grave.status === "archived" ? (
+                        <span className="badge badge-muted">Archived</span>
+                      ) : (
+                        <span
+                          className={`badge ${
+                            grave.verificationStatus === "verified"
+                              ? "badge-success"
+                              : grave.verificationStatus === "rejected"
+                              ? "badge-danger"
+                              : "badge-warning"
+                          }`}
+                        >
+                          {grave.verificationStatus || "pending"}
+                        </span>
+                      )}
+                    </td>
+                    {(isAdmin || canVerify) && (
                     <td>
                       <div className="flex action-buttons" style={{ alignItems: "center", gap: "0.35rem" }}>
                         {canVerify && grave.verificationStatus !== "verified" && (
