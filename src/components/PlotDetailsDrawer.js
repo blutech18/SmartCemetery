@@ -271,7 +271,6 @@ export default function PlotDetailsDrawer({
         updatedPlot.photo = data.photoUrl;
       }
 
-      setLocalPlot(updatedPlot);
       if (typeof onUpdatePlot === "function") {
         onUpdatePlot(updatedPlot);
       }
@@ -370,7 +369,6 @@ export default function PlotDetailsDrawer({
                   if (typeof onSelectPlot === "function") {
                     onSelectPlot(null);
                   }
-                  setLocalPlot(null);
                   setSearchQuery("");
                 }}
                 title="Back to cemetery overview"
@@ -1971,7 +1969,6 @@ export default function PlotDetailsDrawer({
                       if (updatedPlot.status === "available") {
                         updatedPlot.status = "occupied";
                       }
-                      setLocalPlot(updatedPlot);
                       if (typeof onUpdatePlot === "function") {
                         onUpdatePlot(updatedPlot);
                       }

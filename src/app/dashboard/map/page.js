@@ -267,11 +267,7 @@ function MapPageInner() {
   // cascading re-render effects.
   const activeDetailsPlot = useMemo(() => {
     if (!detailsPlot) return null;
-    const fresh = plots.find((p) => p.id === detailsPlot.id);
-    if (fresh && (fresh.graves?.length || 0) >= (detailsPlot.graves?.length || 0)) {
-      return fresh;
-    }
-    return detailsPlot;
+    return plots.find((p) => p.id === detailsPlot.id) || detailsPlot;
   }, [plots, detailsPlot]);
 
   // Re-fetch plots whenever the user returns to this browser tab so changes
