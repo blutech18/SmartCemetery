@@ -1017,6 +1017,7 @@ function MapPageInner() {
           onUpdatePlot={(updatedPlot) => {
             setDetailsPlot(updatedPlot);
             setPlots((prev) => prev.map((p) => (p.id === updatedPlot.id ? updatedPlot : p)));
+            fetchPlots();
           }}
           activeRoute={Boolean(routeCoords && routeCoords.length > 1)}
           isAdmin={isAdmin}

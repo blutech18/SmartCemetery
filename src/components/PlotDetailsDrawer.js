@@ -1546,10 +1546,13 @@ export default function PlotDetailsDrawer({
       {/* ─── Occupy Tier Modal ─── */}
       {showOccupyModal && (() => {
         const allGraves = [];
+        const seenGraveIds = new Set();
         for (const p of allPlots) {
           for (const g of p.graves || []) {
             // Skip archived graves — they cannot be updated or transferred
-            if (g.status === "archived") continue;
+            if (!g || !g.id || g.status === "archived") continue;
+            if (seenGraveIds.has(g.id)) continue;
+            seenGraveIds.add(g.id);
             allGraves.push({
               id: g.id,
               deceasedName: g.deceasedName,
@@ -1768,7 +1771,7 @@ export default function PlotDetailsDrawer({
                         const isOccupied = g.status === "active";
                         return (
                           <button
-                            key={g.id}
+                            key={`occupy-grave-${g.id}`}
                             type="button"
                             onClick={() => {
                               setSelectedGraveId(String(g.id));
