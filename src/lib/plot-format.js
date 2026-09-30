@@ -63,6 +63,44 @@ function plotTierCount(plot) {
   return Math.max(Number(plot.totalTiers) || 1, fromGraves);
 }
 
+/**
+ * Which tiers of a plot are free and who occupies the rest. Pass
+ * `ignoreGraveId` when editing a grave so its own tier counts as free.
+ *
+ * @returns {Array<{ tier: number, label: string, occupant: object|null }>}
+ */
+export function tierAvailability(plot, ignoreGraveId = null) {
+  if (!plot) return [];
+  const total = plotTierCount(plot);
+  const byTier = new Map();
+  for (const g of plot.graves || []) {
+    if (ignoreGraveId != null && g.id === ignoreGraveId) continue;
+    byTier.set(Number(g.tier) || 1, g);
+  }
+  return Array.from({ length: total }, (_, i) => ({
+    tier: i + 1,
+    label: tierLabel(i + 1, total),
+    occupant: byTier.get(i + 1) || null,
+  }));
+}
+
+/** True when at least one tier of the plot has no grave record. */
+export function hasVacantTier(plot) {
+  return tierAvailability(plot).some((t) => !t.occupant);
+}
+
+/**
+ * Can a new grave record be added to this plot? Available plots, and building
+ * plots that are only partly filled (their status is "occupied" as soon as one
+ * tier is used). Reserved/maintenance plots are not offered.
+ */
+export function canAddGrave(plot) {
+  if (!plot) return false;
+  const status = plot.status?.toLowerCase();
+  if (status === "available") return true;
+  return status === "occupied" && hasVacantTier(plot);
+}
+
 /** Photo URL for one tier (falls back to the plot-wide photo), or null. */
 function photoForTier(photos, tier) {
   if (!Array.isArray(photos)) return null;

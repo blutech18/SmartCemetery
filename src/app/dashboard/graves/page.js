@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { Search, Archive, Pencil, Trash2, Camera, Upload } from "lucide-react";
@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 import { useIsClient } from "@/lib/use-is-client";
-import { getGravePhoto, tierLabel } from "@/lib/plot-format";
+import PlotPickerModal from "@/components/plot-picker/PlotPickerModal";
+import { canAddGrave, getGravePhoto, tierAvailability } from "@/lib/plot-format";
 
 const EMPTY_FORM = {
   deceasedName: "",
@@ -41,6 +42,7 @@ export default function GravesPage() {
   const [editingId, setEditingId] = useState(null);
   const [editingGrave, setEditingGrave] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [showPlotPicker, setShowPlotPicker] = useState(false);
   const [plots, setPlots] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [verificationFilter, setVerificationFilter] = useState("");
@@ -76,7 +78,8 @@ export default function GravesPage() {
 
   const fetchPlots = useCallback(async () => {
     try {
-      const res = await fetch("/api/plots?status=available");
+      // All plots: a partly filled crypt is "occupied" but still has vacant tiers.
+      const res = await fetch("/api/plots?limit=1000", { cache: "no-store" });
       const data = await res.json();
       setPlots(data.plots || []);
     } catch (err) {
@@ -179,6 +182,44 @@ export default function GravesPage() {
       setSubmitting(false);
     }
   }
+
+  // Deep link from the map: /dashboard/graves?plot=<plot number or id>&tier=<n>
+  // opens the add form with that plot and tier chosen.
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current || !isAdmin || plots.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get("plot");
+    if (!target) return;
+    deepLinkHandled.current = true;
+
+    const plot = plots.find(
+      (p) => String(p.id) === target || p.plotNumber?.toLowerCase() === target.toLowerCase()
+    );
+    window.history.replaceState(null, "", window.location.pathname);
+    if (!plot) {
+      toast.error(`Plot "${target}" was not found`);
+      return;
+    }
+    const tiers = tierAvailability(plot);
+    const wanted = Number(params.get("tier"));
+    const pick =
+      tiers.find((t) => t.tier === wanted && !t.occupant) || tiers.find((t) => !t.occupant);
+    if (!pick) {
+      toast.error(`Every tier of ${plot.plotNumber} already has a record`);
+      return;
+    }
+    // Deferred so state is not set synchronously inside the effect.
+    queueMicrotask(() => {
+      setEditingId(null);
+      setEditingGrave(null);
+      setForm({ ...EMPTY_FORM, plotId: String(plot.id), tier: pick.tier });
+      setInitialPhoto("");
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      setShowModal(true);
+    });
+  }, [plots, isAdmin]);
 
   function openCreate() {
     setEditingId(null);
@@ -533,10 +574,41 @@ export default function GravesPage() {
 
                   <div className="form-group">
                     <label className="form-label">Plot *</label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ width: "100%", justifyContent: "center", marginBottom: 6 }}
+                      onClick={() => setShowPlotPicker(true)}
+                      id="grave-form-pick-on-map"
+                    >
+                      {(() => {
+                        const chosen = plots.find((p) => String(p.id) === String(form.plotId));
+                        if (!chosen) return "Pick the plot on the map";
+                        const multi = (Number(chosen.totalTiers) || 1) > 1;
+                        return `${chosen.plotNumber}${multi ? ` · Tier ${form.tier || 1}` : ""} — change on map`;
+                      })()}
+                    </button>
+                    {showPlotPicker && (
+                      <PlotPickerModal
+                        plots={plots}
+                        selectedPlotId={form.plotId || null}
+                        selectedTier={form.tier || null}
+                        ignoreGraveId={editingId}
+                        onSelect={({ plotId, tier }) => {
+                          setForm((f) => ({ ...f, plotId: String(plotId), tier }));
+                          setShowPlotPicker(false);
+                        }}
+                        onClose={() => setShowPlotPicker(false)}
+                      />
+                    )}
                     <select
                       className="form-select"
                       value={form.plotId}
-                      onChange={(e) => setForm({ ...form, plotId: e.target.value })}
+                      onChange={(e) => {
+                        const plot = plots.find((p) => String(p.id) === e.target.value);
+                        const firstVacant = tierAvailability(plot, editingId).find((t) => !t.occupant);
+                        setForm({ ...form, plotId: e.target.value, tier: firstVacant?.tier ?? 1 });
+                      }}
                       required
                       id="grave-form-plot"
                     >
@@ -545,18 +617,40 @@ export default function GravesPage() {
                         const current = (editingGrave || displayGraves.find((grave) => grave.id === editingId))?.plot;
                         return <option value={form.plotId}>{current?.plotNumber || `Plot ${form.plotId}`} — current assignment</option>;
                       })()}
-                      {plots.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.plotNumber} — {p.locationDetail?.location?.name}
-                        </option>
-                      ))}
+                      {(() => {
+                        // Offer plots that can take a record, grouped by location and section.
+                        const groups = new Map();
+                        for (const p of plots) {
+                          if (!(canAddGrave(p) || (editingId && String(p.id) === form.plotId))) continue;
+                          const label =
+                            [p.locationDetail?.location?.name, p.locationDetail?.subsection]
+                              .filter(Boolean)
+                              .join(" · ") || "Other";
+                          if (!groups.has(label)) groups.set(label, []);
+                          groups.get(label).push(p);
+                        }
+                        return [...groups.entries()].map(([label, list]) => (
+                          <optgroup key={label} label={label}>
+                            {list.map((p) => {
+                              const tiers = tierAvailability(p, editingId);
+                              const vacant = tiers.filter((t) => !t.occupant).length;
+                              return (
+                                <option key={p.id} value={p.id}>
+                                  {p.plotNumber}
+                                  {tiers.length > 1 ? ` (${vacant} of ${tiers.length} tiers vacant)` : ""}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        ));
+                      })()}
                     </select>
                   </div>
 
                   {(() => {
                     const selectedPlot = plots.find((p) => String(p.id) === String(form.plotId));
-                    const tierCount = Number(selectedPlot?.totalTiers) || 1;
-                    if (tierCount <= 1) return null;
+                    const tiers = tierAvailability(selectedPlot, editingId);
+                    if (tiers.length <= 1) return null;
                     return (
                       <div className="form-group">
                         <label className="form-label">Crypt Niche Tier *</label>
@@ -567,9 +661,10 @@ export default function GravesPage() {
                           required
                           id="grave-form-tier"
                         >
-                          {Array.from({ length: tierCount }, (_, i) => i + 1).map((n) => (
-                            <option key={n} value={n}>
-                              {tierLabel(n, tierCount)}
+                          {tiers.map((t) => (
+                            <option key={t.tier} value={t.tier} disabled={Boolean(t.occupant)}>
+                              {t.label}
+                              {t.occupant ? ` — occupied by ${t.occupant.deceasedName}` : " — vacant"}
                             </option>
                           ))}
                         </select>

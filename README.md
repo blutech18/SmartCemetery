@@ -113,6 +113,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | `npm run db:setup` | Create DB, migrate, generate client, and seed |
 | `npm run db:inspect` | Read-only summary of the layout in the database |
 | `npm run db:backfill-tiers` | Move legacy tier/photo data into real columns (dry run by default) |
+| `npm run db:cleanup-demo` | Remove duplicate demo sections left by older seed runs (dry run by default) |
 | `npm run db:rotate-encryption` | Rotate the encryption key for sensitive fields |
 
 ## Project Structure

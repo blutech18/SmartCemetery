@@ -27,6 +27,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import NavigationOverlay from "./NavigationOverlay";
 import ChangePhotoModal from "./plot-drawer/ChangePhotoModal";
 import OccupyTierModal from "./plot-drawer/OccupyTierModal";
@@ -586,6 +587,22 @@ export default function PlotDetailsDrawer({
                     <CheckCircle2 size={15} />
                     <span>Occupy {currentTier?.label || `Tier ${currentTier?.tier}`}</span>
                   </button>
+                  {isAdmin && activePlot?.plotNumber && (
+                    <Link
+                      href={`/dashboard/graves?plot=${encodeURIComponent(activePlot.plotNumber)}&tier=${currentTier?.tier || 1}`}
+                      style={{
+                        display: "block",
+                        marginTop: 8,
+                        textAlign: "center",
+                        fontSize: "0.78rem",
+                        fontWeight: 600,
+                        color: isLight ? "#0284c7" : "#38bdf8",
+                        textDecoration: "none",
+                      }}
+                    >
+                      + Add a new deceased record for this tier
+                    </Link>
+                  )}
                 </div>
               )}
 

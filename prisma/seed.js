@@ -102,9 +102,16 @@ async function main() {
   if (seedDemo) {
     // 3. Create Locations
     console.log("Creating locations...");
-    const locations = await Promise.all([
-      prisma.location.create({
-        data: {
+    // Re-running the seed must not add another copy of each demo section.
+    const ensureLocation = async (spec) => {
+      const existing = await prisma.location.findFirst({
+        where: { name: spec.name },
+        include: { details: true },
+      });
+      return existing || prisma.location.create({ data: spec, include: { details: true } });
+    };
+    const locationSpecs = [
+      {
           name: "Section A - North Wing",
           description: "Main entrance area, well-maintained section with paved pathways",
           gpsLat: 8.4650,
@@ -116,11 +123,8 @@ async function main() {
               { subsection: "A3", sortOrder: 3, capacity: 40 },
             ],
           },
-        },
-        include: { details: true },
-      }),
-      prisma.location.create({
-        data: {
+      },
+      {
           name: "Section B - East Side",
           description: "Recently expanded section near the chapel",
           gpsLat: 8.4645,
@@ -131,11 +135,8 @@ async function main() {
               { subsection: "B2", sortOrder: 2, capacity: 45 },
             ],
           },
-        },
-        include: { details: true },
-      }),
-      prisma.location.create({
-        data: {
+      },
+      {
           name: "Section C - South Garden",
           description: "Garden memorial area with landscaped surroundings",
           gpsLat: 8.4642,
@@ -146,11 +147,11 @@ async function main() {
               { subsection: "C2", sortOrder: 2, capacity: 35 },
             ],
           },
-        },
-        include: { details: true },
-      }),
-    ]);
-    console.log(`  ✓ ${locations.length} locations created`);
+      },
+    ];
+    const locations = [];
+    for (const spec of locationSpecs) locations.push(await ensureLocation(spec));
+    console.log(`  ✓ ${locations.length} demo locations ready`);
 
     // 4. Create Plots
     console.log("Creating plots...");
@@ -160,10 +161,13 @@ async function main() {
         const numPlots = Math.min(detail.capacity, 10); // Create 10 sample plots per subsection
         for (let i = 1; i <= numPlots; i++) {
           const status = i <= 6 ? "occupied" : i <= 8 ? "reserved" : "available";
-          await prisma.plot.create({
-            data: {
+          const plotNumber = `${detail.subsection}-${String(i).padStart(3, "0")}`;
+          await prisma.plot.upsert({
+            where: { locationDetailId_plotNumber: { locationDetailId: detail.id, plotNumber } },
+            update: {},
+            create: {
               locationDetailId: detail.id,
-              plotNumber: `${detail.subsection}-${String(i).padStart(3, "0")}`,
+              plotNumber,
               status,
               gpsLat: Number(location.gpsLat) + (Math.random() - 0.5) * 0.001,
               gpsLng: Number(location.gpsLng) + (Math.random() - 0.5) * 0.001,
@@ -173,27 +177,23 @@ async function main() {
         }
       }
     }
-    console.log(`  ✓ ${plotCount} plots created`);
+    console.log(`  ✓ ${plotCount} demo plots ready`);
 
     // 5. Create Graves
     console.log("Creating grave records...");
-    const occupiedPlots = await prisma.plot.findMany({
-      where: { status: "occupied", graves: { none: {} } },
-      take: 30,
-    });
+    // Demo graves are created once; a re-run leaves them as they are.
+    const demoPlotScope = { locationDetail: { locationId: { in: locations.map((l) => l.id) } } };
+    const haveDemoGraves = (await prisma.grave.count({ where: { plot: demoPlotScope } })) > 0;
+    const occupiedPlots = haveDemoGraves
+      ? []
+      : await prisma.plot.findMany({
+          where: { status: "occupied", graves: { none: {} }, ...demoPlotScope },
+          take: 30,
+        });
 
-    const sampleNames = [
-      "Jose Rizal", "Andres Bonifacio", "Emilio Aguinaldo",
-      "Apolinario Mabini", "Gregorio Del Pilar", "Antonio Luna",
-      "Melchora Aquino", "Gabriela Silang", "Diego Silang",
-      "Juan Luna", "Felix Resurreccion Hidalgo", "Marcelo H. Del Pilar",
-      "Graciano Lopez Jaena", "Lapu-Lapu", "Sultan Kudarat",
-      "Datu Puti", "Raja Sulayman", "Pedro Calungsod",
-      "Lorenzo Ruiz", "Josefa Llanes Escoda", "Rosa Sevilla",
-      "Trinidad Tecson", "Tandang Sora", "Heneral Malvar",
-      "Vicente Lim", "Leon Kilat", "Francisco Dagohoy",
-      "Rajah Humabon", "Carlos P. Garcia", "Ramon Magsaysay",
-    ];
+    // Shared with scripts/cleanup-demo-duplicates.js so the two never drift apart.
+    const { DEMO_GRAVE_NAMES } = await import("../src/lib/demo-data.js");
+    const sampleNames = DEMO_GRAVE_NAMES;
 
     for (let i = 0; i < occupiedPlots.length && i < sampleNames.length; i++) {
       const yearsAgo = Math.floor(Math.random() * 8) + 1;
@@ -264,18 +264,16 @@ async function main() {
 
     // 7. Create Sample Feedback
     console.log("Creating sample feedback...");
-    await Promise.all([
-      prisma.feedback.create({
-        data: { userId: users[2].id, rating: 5, comment: "Excellent navigation system! Found the grave location easily." },
-      }),
-      prisma.feedback.create({
-        data: { userId: users[2].id, rating: 4, comment: "Very useful app. Directions were clear and accurate." },
-      }),
-      prisma.feedback.create({
-        data: { userId: users[2].id, rating: 4, comment: "Great improvement over the old paper-based system." },
-      }),
-    ]);
-    console.log("  ✓ 3 sample feedbacks created");
+    const sampleFeedback = [
+      { rating: 5, comment: "Excellent navigation system! Found the grave location easily." },
+      { rating: 4, comment: "Very useful app. Directions were clear and accurate." },
+      { rating: 4, comment: "Great improvement over the old paper-based system." },
+    ];
+    for (const fb of sampleFeedback) {
+      const exists = await prisma.feedback.findFirst({ where: { userId: users[2].id, comment: fb.comment } });
+      if (!exists) await prisma.feedback.create({ data: { userId: users[2].id, ...fb } });
+    }
+    console.log("  ✓ sample feedback ready");
   } else {
     console.log("Skipping demo data (set SEED_DEMO_DATA=yes to load sample sections, graves, requests and feedback).");
   }

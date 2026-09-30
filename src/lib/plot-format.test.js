@@ -10,6 +10,9 @@ import {
   statusMeta,
   getGravePhoto,
   tierLabel,
+  tierAvailability,
+  hasVacantTier,
+  canAddGrave,
 } from "./plot-format";
 
 describe("plot-format", () => {
@@ -145,5 +148,45 @@ describe("plot-format", () => {
     expect(statusMeta("available").label).toBe("Available");
     expect(statusMeta("hold").label).toBe("Hold / Reserved");
     expect(statusMeta("something-else").label).toBe("Unavailable");
+  });
+
+  describe("adding records to tiers", () => {
+    const crypt = {
+      id: 1,
+      plotNumber: "C-1",
+      status: "occupied",
+      totalTiers: 4,
+      graves: [{ id: 10, tier: 1, deceasedName: "Ramon" }],
+    };
+
+    it("reports which tiers are free and who holds the rest", () => {
+      const tiers = tierAvailability(crypt);
+      expect(tiers).toHaveLength(4);
+      expect(tiers[0]).toMatchObject({ tier: 1, occupant: { deceasedName: "Ramon" } });
+      expect(tiers.slice(1).every((t) => t.occupant === null)).toBe(true);
+      expect(tiers[1].label).toBe("Tier 2 (Second Level)");
+    });
+
+    it("frees a grave's own tier while it is being edited", () => {
+      expect(tierAvailability(crypt, 10)[0].occupant).toBeNull();
+      expect(tierAvailability(crypt, 99)[0].occupant).not.toBeNull();
+    });
+
+    it("offers a partly filled building plot even though its status is occupied", () => {
+      expect(hasVacantTier(crypt)).toBe(true);
+      expect(canAddGrave(crypt)).toBe(true);
+    });
+
+    it("does not offer full, reserved, maintenance or missing plots", () => {
+      const full = { ...crypt, totalTiers: 1 };
+      expect(canAddGrave(full)).toBe(false); // single tier, taken
+      expect(canAddGrave({ ...crypt, status: "reserved" })).toBe(false);
+      expect(canAddGrave({ ...crypt, status: "maintenance" })).toBe(false);
+      expect(canAddGrave(null)).toBe(false);
+    });
+
+    it("always offers an available plot", () => {
+      expect(canAddGrave({ id: 2, plotNumber: "L-1", status: "available", totalTiers: 1, graves: [] })).toBe(true);
+    });
   });
 });

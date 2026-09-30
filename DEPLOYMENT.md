@@ -68,6 +68,12 @@ The seed creates **only** the user accounts unless told otherwise:
 - `SEED_LAYOUT_PRESET=yes` loads the plot layout from `src/lib/layout-preset.json`
   (positions and tier counts only — no burial records).
 
+Earlier seed versions re-created the demo sections on every run, leaving duplicate plots such as
+`A1-009` listed several times. `npm run db:cleanup-demo` (dry run) shows what would be removed and
+`CLEANUP_CONFIRM=apply npm run db:cleanup-demo` removes it. It keeps the oldest copy of each demo
+section and only deletes a duplicate whose records all carry invented demo names; anything that
+looks real is left alone and reported.
+
 `npm run db:setup` enables both automatically for a **local** database, and refuses to
 default secrets (`NEXTAUTH_SECRET`, `ENCRYPTION_KEY`, seed passwords) for any other host.
 
