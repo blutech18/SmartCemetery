@@ -262,13 +262,13 @@ function MapPageInner() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Sync the open side-panel plot whenever the plots array is refreshed so
-  // edits made on other pages (e.g. Grave Records) are reflected immediately.
-  useEffect(() => {
-    if (!detailsPlot) return;
-    const fresh = plots.find((p) => p.id === detailsPlot.id);
-    if (fresh && fresh !== detailsPlot) setDetailsPlot(fresh);
-  }, [plots]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Derive the fresh plot data for the open side-panel plot whenever plots array
+  // is refreshed, so edits made on other pages are reflected immediately without
+  // cascading re-render effects.
+  const activeDetailsPlot = useMemo(() => {
+    if (!detailsPlot) return null;
+    return plots.find((p) => p.id === detailsPlot.id) || detailsPlot;
+  }, [plots, detailsPlot]);
 
   // Re-fetch plots whenever the user returns to this browser tab so changes
   // made on other dashboard pages (e.g. updating DOB/DOD in Grave Records)
@@ -766,10 +766,10 @@ function MapPageInner() {
       const ldId = pending.isNew ? pending.locationDetailId : (pending.locationDetailId ?? pending.locationDetail?.id);
       return sectionPoint(ldId);
     }
-    if (detailsPlot && hasGps(detailsPlot)) return { lat: Number(detailsPlot.gpsLat), lng: Number(detailsPlot.gpsLng) };
+    if (activeDetailsPlot && hasGps(activeDetailsPlot)) return { lat: Number(activeDetailsPlot.gpsLat), lng: Number(activeDetailsPlot.gpsLng) };
     if (bolonsiriFocus) return { lat: bolonsiriFocus.lat, lng: bolonsiriFocus.lng };
     return null;
-  }, [pending, detailsPlot, bolonsiriFocus, sectionPoint]);
+  }, [pending, activeDetailsPlot, bolonsiriFocus, sectionPoint]);
 
   function handleMapClick(lat, lng) {
     if (!pending) return;
@@ -850,7 +850,7 @@ function MapPageInner() {
   }
 
   const detailsDestination =
-    detailsPlot && hasGps(detailsPlot) ? { lat: Number(detailsPlot.gpsLat), lng: Number(detailsPlot.gpsLng) } : detailsPlot ? { lat: NaN, lng: NaN } : null;
+    activeDetailsPlot && hasGps(activeDetailsPlot) ? { lat: Number(activeDetailsPlot.gpsLat), lng: Number(activeDetailsPlot.gpsLng) } : activeDetailsPlot ? { lat: NaN, lng: NaN } : null;
 
   return (
     <div style={isFullScreen ? { display: "flex", flexDirection: "column", height: "100%", flex: 1, minHeight: 0 } : undefined}>
@@ -998,7 +998,7 @@ function MapPageInner() {
       >
         {/* Slide-out Plot Details Drawer */}
         <PlotDetailsDrawer
-          plot={detailsPlot}
+          plot={activeDetailsPlot}
           allPlots={plots}
           isOpen={Boolean(!pending && !editing && !adjustMode)}
           isCollapsed={drawerCollapsed}
@@ -1066,7 +1066,7 @@ function MapPageInner() {
 
         <CemeteryMap
           plots={plots}
-          selectedPlot={detailsPlot}
+          selectedPlot={activeDetailsPlot}
           onSelectPlot={(plot) => {
             if (pending || editing || adjustMode) return;
             setRouteCoords(null);

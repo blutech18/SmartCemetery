@@ -59,7 +59,7 @@ function validatePatch(body) {
   }
 
   const coreSource = {};
-  for (const field of ["deceasedName", "plotId"]) {
+  for (const field of ["deceasedName", "plotId", "tier"]) {
     if (Object.prototype.hasOwnProperty.call(body, field)) coreSource[field] = body[field];
   }
   const core = validateBody(coreSource, UPDATE_GRAVE_SCHEMA);
