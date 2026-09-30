@@ -39,33 +39,63 @@ import {
   Trash2,
   AlertTriangle,
 } from "lucide-react";
-import { CMP_BOUNDARY_OFFSETS_METERS } from "./CemeteryMap";
+import {
+  DEFAULT_BUILDING_LENGTH_M,
+  DEFAULT_BUILDING_WIDTH_M,
+  DEFAULT_GRID_ANGLE_DEG,
+} from "@/lib/config";
+import {
+  buildingLabel,
+  isBuildingPlot,
+  listBuildingKeys,
+  plotsOfBuilding,
+} from "@/lib/cemetery-layout";
 import {
   snapBuildingToPlots,
   getSubdividedBuildingCells,
   applyBuildingCellsToPlots,
 } from "../lib/building-grid";
 import {
-  BOLONSORI_PRESET,
-  BOLONSORI_ROW_CONFIGS,
-  applyBolonsoriPreset,
-} from "../lib/bolonsori-preset";
+  LAYOUT_DELETED_ROWS,
+  LAYOUT_PRESET,
+  LAYOUT_PRESET_SUMMARY,
+  applyLayoutPreset,
+  defaultRowConfig,
+} from "../lib/layout-preset";
 import { getAdjusterTheme } from "../lib/adjuster-theme";
 
 /**
  * Adjust specific lines/edges of the boundary polygon by deltaMeters
  */
 export function adjustBoundaryLine(offsets, line, deltaMeters) {
-  const current = offsets && offsets.length >= 3 ? offsets : CMP_BOUNDARY_OFFSETS_METERS;
-  return current.map((pt, idx) => {
+  if (!Array.isArray(offsets) || offsets.length < 3) return offsets || [];
+
+  // A vertex belongs to a side when it lies in that side's outer quarter of the
+  // polygon's extent, so this works for any polygon (rectangle, traced outline…).
+  const xs = offsets.map((p) => p.dx);
+  const ys = offsets.map((p) => p.dy);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const bandX = (maxX - minX) * 0.25;
+  const bandY = (maxY - minY) * 0.25;
+  const onSide = {
+    north: (p) => p.dy >= maxY - bandY,
+    south: (p) => p.dy <= minY + bandY,
+    east: (p) => p.dx >= maxX - bandX,
+    west: (p) => p.dx <= minX + bandX,
+  };
+
+  return offsets.map((pt) => {
     let { dx, dy } = pt;
-    if (line === "north" && (idx === 0 || idx === 1)) {
+    if (line === "north" && onSide.north(pt)) {
       dy += deltaMeters;
-    } else if (line === "south" && (idx === 3 || idx === 4 || idx === 5)) {
+    } else if (line === "south" && onSide.south(pt)) {
       dy -= deltaMeters;
-    } else if (line === "east" && (idx === 1 || idx === 2 || idx === 3)) {
+    } else if (line === "east" && onSide.east(pt)) {
       dx += deltaMeters;
-    } else if (line === "west" && (idx === 5 || idx === 6 || idx === 0)) {
+    } else if (line === "west" && onSide.west(pt)) {
       dx -= deltaMeters;
     } else if (line === "expand") {
       dx += dx >= 0 ? deltaMeters : -deltaMeters;
@@ -109,9 +139,9 @@ export default function PlotPositionAdjuster({
   saving = false,
   selectedScope = "all",
   onSelectScope,
-  gridAngle = 37.7,
+  gridAngle = DEFAULT_GRID_ANGLE_DEG,
   onChangeGridAngle,
-  boundaryOffsets = CMP_BOUNDARY_OFFSETS_METERS,
+  boundaryOffsets = null,
   onUpdateBoundaryOffsets,
   editBoundaryLines = false,
   onToggleEditBoundaryLines,
@@ -242,40 +272,21 @@ export default function PlotPositionAdjuster({
 
   const handleLineNudge = useCallback(
     (line, delta) => {
-      if (!onUpdateBoundaryOffsets) return;
+      if (!onUpdateBoundaryOffsets || !Array.isArray(boundaryOffsets) || boundaryOffsets.length < 3) return;
       const updated = adjustBoundaryLine(boundaryOffsets, line, delta);
       onUpdateBoundaryOffsets(updated);
     },
     [boundaryOffsets, onUpdateBoundaryOffsets]
   );
 
-  // Group row names from plots
-  const availableRows = useMemo(() => {
-    const set = new Set();
-    for (const p of plots) {
-      if (p._deleted) continue;
-      const match = p.plotNumber?.match(/^(ROW-[EW]\d+)/);
-      if (match) set.add(match[1]);
-      else if (p.plotNumber === "WALAG-001") set.add("ROW-W07");
-    }
-    return Array.from(set).sort();
-  }, [plots]);
+  // Buildings (rows) that exist, from the plots' own data
+  const availableRows = useMemo(() => listBuildingKeys(plots), [plots]);
 
   // Minimum required columns to protect existing plots that have graves
   const minColsForTargetRow = useMemo(() => {
     const targetRow = buildingConfig?.targetRow;
     if (!targetRow || targetRow === "custom") return 1;
-    const targetPlots = plots
-      .filter(
-        (p) =>
-          !p._deleted &&
-          (p.plotNumber?.startsWith(targetRow) || (targetRow === "ROW-W07" && p.plotNumber === "WALAG-001"))
-      )
-      .sort((a, b) => {
-        if (a.plotNumber === "WALAG-001") return -1;
-        if (b.plotNumber === "WALAG-001") return 1;
-        return (a.plotNumber || "").localeCompare(b.plotNumber || "", undefined, { numeric: true });
-      });
+    const targetPlots = plotsOfBuilding(plots, targetRow);
 
     let maxGraveIdx = -1;
     targetPlots.forEach((p, idx) => {
@@ -291,18 +302,8 @@ export default function PlotPositionAdjuster({
 
   const scopeFilter = useCallback(
     (p) => {
-      if (p._deleted) return false;
-      const isCmp =
-        p.plotNumber?.startsWith("ROW-") ||
-        p.plotNumber === "WALAG-001" ||
-        p.locationDetail?.subsection?.startsWith("ROW-");
-      if (!isCmp) return false;
-
-      if (selectedScope === "all") return true;
-      if (selectedScope === "east") return p.plotNumber?.startsWith("ROW-E");
-      if (selectedScope === "west") return p.plotNumber?.startsWith("ROW-W") || p.plotNumber === "WALAG-001";
-      if (selectedScope === "walag") return p.plotNumber === "WALAG-001" || p.plotNumber?.startsWith("ROW-W07");
-      return p.plotNumber?.startsWith(selectedScope) || (selectedScope === "ROW-W07" && p.plotNumber === "WALAG-001");
+      if (p._deleted || !isBuildingPlot(p)) return false;
+      return selectedScope === "all" || plotsOfBuilding([p], selectedScope).length === 1;
     },
     [selectedScope]
   );
@@ -362,10 +363,8 @@ export default function PlotPositionAdjuster({
   const handleSnapToRow = useCallback(
     (targetRow = buildingConfig?.targetRow) => {
       if (!targetRow || targetRow === "custom") return;
-      const targetPlots = plots.filter(
-        (p) => !p._deleted && (p.plotNumber?.startsWith(targetRow) || (targetRow === "ROW-W07" && p.plotNumber === "WALAG-001"))
-      );
-      const snapped = snapBuildingToPlots(targetPlots, gridAngle ?? 37.7);
+      const targetPlots = plotsOfBuilding(plots, targetRow);
+      const snapped = snapBuildingToPlots(targetPlots, gridAngle ?? DEFAULT_GRID_ANGLE_DEG);
       if (snapped && onUpdateBuildingConfig) {
         onUpdateBuildingConfig((prev) => ({
           ...prev,
@@ -381,13 +380,7 @@ export default function PlotPositionAdjuster({
   // Apply building cell coordinates to database plots
   const handleApplyBuildingPlots = useCallback(async () => {
     if (!buildingConfig || !onUpdatePlots) return;
-    const targetPlots = plots
-      .filter((p) => !p._deleted && (p.plotNumber?.startsWith(buildingConfig.targetRow) || (buildingConfig.targetRow === "ROW-W07" && p.plotNumber === "WALAG-001")))
-      .sort((a, b) => {
-        if (a.plotNumber === "WALAG-001") return -1;
-        if (b.plotNumber === "WALAG-001") return 1;
-        return (a.plotNumber || "").localeCompare(b.plotNumber || "", undefined, { numeric: true });
-      });
+    const targetPlots = plotsOfBuilding(plots, buildingConfig.targetRow);
 
     const cells = getSubdividedBuildingCells({
       centerLat: buildingConfig.centerLat,
@@ -409,24 +402,18 @@ export default function PlotPositionAdjuster({
     }
   }, [buildingConfig, plots, onUpdatePlots, onSave]);
 
-  // Revise & align all 15 building block rows at once
+  // Revise & align every building row at once
   const handleReviseAllRows = useCallback(async () => {
     if (!onUpdatePlots) return;
 
     let updatedPlots = [...plots];
 
     for (const r of availableRows) {
-      const rowPlots = plots
-        .filter((p) => !p._deleted && (p.plotNumber?.startsWith(r) || (r === "ROW-W07" && p.plotNumber === "WALAG-001")))
-        .sort((a, b) => {
-          if (a.plotNumber === "WALAG-001") return -1;
-          if (b.plotNumber === "WALAG-001") return 1;
-          return (a.plotNumber || "").localeCompare(b.plotNumber || "", undefined, { numeric: true });
-        });
+      const rowPlots = plotsOfBuilding(plots, r);
 
       if (rowPlots.length === 0) continue;
 
-      const snapped = snapBuildingToPlots(rowPlots, gridAngle ?? 37.7);
+      const snapped = snapBuildingToPlots(rowPlots, gridAngle ?? DEFAULT_GRID_ANGLE_DEG);
       if (!snapped) continue;
 
       const cells = getSubdividedBuildingCells({
@@ -455,12 +442,7 @@ export default function PlotPositionAdjuster({
   const handleDeleteBuilding = useCallback(
     async (rowToDelete) => {
       if (!rowToDelete || !onUpdatePlots) return;
-      const targetPlots = plots.filter(
-        (p) =>
-          !p._deleted &&
-          (p.plotNumber?.startsWith(rowToDelete) ||
-            (rowToDelete === "ROW-W07" && p.plotNumber === "WALAG-001"))
-      );
+      const targetPlots = plotsOfBuilding(plots, rowToDelete);
 
       if (targetPlots.length === 0) {
         setConfirmDeleteRow(null);
@@ -483,7 +465,7 @@ export default function PlotPositionAdjuster({
     [plots, onUpdatePlots, onUpdateBuildingConfig, onSave, setConfirmDeleteRow]
   );
 
-  // Apply master Bolonsiri layout preset (119 plots across 12 concrete rows)
+  // Apply the configured layout preset (see src/lib/layout-preset.json)
   const handleApplyPreset = useCallback(async () => {
     setApplyingPreset(true);
     try {
@@ -501,7 +483,7 @@ export default function PlotPositionAdjuster({
             onPresetSuccess(data.plots);
           }
           if (typeof onUpdateBuildingConfig === "function") {
-            const initialRowCfg = BOLONSORI_ROW_CONFIGS["ROW-E02"] || Object.values(BOLONSORI_ROW_CONFIGS)[0];
+            const initialRowCfg = defaultRowConfig();
             if (initialRowCfg) {
               onUpdateBuildingConfig((prev) => ({
                 ...prev,
@@ -525,10 +507,10 @@ export default function PlotPositionAdjuster({
       setShowPresetModal(false);
       return;
     }
-    const updated = applyBolonsoriPreset(plots);
+    const updated = applyLayoutPreset(plots);
     onUpdatePlots(updated);
     if (typeof onUpdateBuildingConfig === "function") {
-      const initialRowCfg = BOLONSORI_ROW_CONFIGS["ROW-E02"] || Object.values(BOLONSORI_ROW_CONFIGS)[0];
+      const initialRowCfg = defaultRowConfig();
       if (initialRowCfg) {
         onUpdateBuildingConfig((prev) => ({
           ...prev,
@@ -549,12 +531,7 @@ export default function PlotPositionAdjuster({
 
   const deleteRowPlots = useMemo(() => {
     if (!confirmDeleteRow) return [];
-    return plots.filter(
-      (p) =>
-        !p._deleted &&
-        (p.plotNumber?.startsWith(confirmDeleteRow) ||
-          (confirmDeleteRow === "ROW-W07" && p.plotNumber === "WALAG-001"))
-    );
+    return plotsOfBuilding(plots, confirmDeleteRow);
   }, [confirmDeleteRow, plots]);
 
   const deleteEmptyCount = useMemo(
@@ -642,7 +619,7 @@ export default function PlotPositionAdjuster({
           <span>Alignment Active</span>
           <span style={{ color: t.textMuted }}>•</span>
           <span style={{ color: isLight ? "#0284c7" : "#38bdf8", fontSize: "0.78rem", fontFamily: "var(--font-mono)" }}>
-            {(gridAngle ?? 37.7).toFixed(1)}°
+            {(gridAngle ?? DEFAULT_GRID_ANGLE_DEG).toFixed(1)}°
           </span>
           {modifiedCount > 0 ? (
             <span
@@ -833,7 +810,7 @@ export default function PlotPositionAdjuster({
             <button
               type="button"
               onClick={() => setShowPresetModal(true)}
-              title="Apply Bolonsiri Master Plot Design Preset (119 Plots)"
+              title={`Apply the ${LAYOUT_PRESET_SUMMARY.name} layout preset (${LAYOUT_PRESET_SUMMARY.totalPlots} plots)`}
               style={{
                 background: isLight ? "rgba(16, 185, 129, 0.1)" : "rgba(16, 185, 129, 0.18)",
                 border: isLight ? "1px solid rgba(16, 185, 129, 0.35)" : "1px solid rgba(16, 185, 129, 0.45)",
@@ -1115,14 +1092,13 @@ export default function PlotPositionAdjuster({
               minWidth: isLeft ? "auto" : 260,
             }}
           >
-            <option value="all">Entire Cemetery Grid (All 142 plots)</option>
-            <option value="east">East Wing (Rows E01 – E07)</option>
-            <option value="west">West Wing (Rows W01 – W08)</option>
-            <option value="walag">Row W07 (Walag Crypts)</option>
+            <option value="all">
+              Entire Cemetery Grid ({plots.filter((p) => !p._deleted && isBuildingPlot(p)).length} plots)
+            </option>
             <optgroup label="Individual Rows">
               {availableRows.map((r) => (
                 <option key={r} value={r}>
-                  {r.replace("ROW-", "Row ")}
+                  {buildingLabel(r)}
                 </option>
               ))}
             </optgroup>
@@ -1372,7 +1348,7 @@ export default function PlotPositionAdjuster({
                   <span style={{ whiteSpace: "nowrap" }}>-0.5°</span>
                 </button>
                 <span style={{ minWidth: 50, textAlign: "center", fontSize: "0.8rem", color: t.rotTextColor, fontWeight: 700, fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
-                  {(gridAngle ?? 37.7).toFixed(1)}°
+                  {(gridAngle ?? DEFAULT_GRID_ANGLE_DEG).toFixed(1)}°
                 </span>
                 <button
                   type="button"
@@ -1789,65 +1765,6 @@ export default function PlotPositionAdjuster({
             scrollbarWidth: "thin",
           }}
         >
-          {/* Preset Card: Master Bolonsiri Design */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              background: isLight ? "rgba(16, 185, 129, 0.08)" : "rgba(16, 185, 129, 0.12)",
-              border: isLight ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(16, 185, 129, 0.4)",
-              padding: "8px 10px",
-              borderRadius: 6,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <BookmarkCheck size={14} style={{ color: "#10b981" }} />
-                <span style={{ fontSize: "0.72rem", fontWeight: 700, color: isLight ? "#065f46" : "#6ee7b7" }}>
-                  Bolonsiri Layout Preset
-                </span>
-              </div>
-              <span
-                style={{
-                  fontSize: "0.6rem",
-                  fontWeight: 700,
-                  background: "#10b981",
-                  color: "#ffffff",
-                  padding: "1px 6px",
-                  borderRadius: 10,
-                }}
-              >
-                119 Plots • 12 Rows
-              </span>
-            </div>
-            <p style={{ margin: 0, fontSize: "0.67rem", color: isLight ? "#047857" : "#a7f3d0", lineHeight: 1.35 }}>
-              Current master localdev design aligned with concrete apartment foundations.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowPresetModal(true)}
-              style={{
-                background: "#10b981",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: 5,
-                padding: "6px 10px",
-                fontSize: "0.72rem",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-                boxShadow: "0 2px 5px rgba(16, 185, 129, 0.3)",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <BookmarkCheck size={13} /> Apply Preset Design
-            </button>
-          </div>
-
           {/* Card 1: Target Row & Auto Snap */}
           <div
             style={{
@@ -1866,7 +1783,7 @@ export default function PlotPositionAdjuster({
               </span>
               <button
                 type="button"
-                onClick={() => handleSnapToRow(buildingConfig?.targetRow || "ROW-E02")}
+                onClick={() => handleSnapToRow(buildingConfig?.targetRow || availableRows[0] || "custom")}
                 title="Auto-detect and snap building box to current row plots"
                 style={{
                   background: isLight ? "rgba(5, 150, 105, 0.1)" : "rgba(16, 185, 129, 0.15)",
@@ -1888,7 +1805,7 @@ export default function PlotPositionAdjuster({
 
             <select
               aria-label="Building row"
-              value={buildingConfig?.targetRow || "ROW-E02"}
+              value={buildingConfig?.targetRow || availableRows[0] || "custom"}
               onChange={(e) => {
                 const row = e.target.value;
                 if (typeof onUpdateBuildingConfig === "function") {
@@ -1914,14 +1831,10 @@ export default function PlotPositionAdjuster({
             >
               <optgroup label="Apartment Rows">
                 {availableRows.map((r) => {
-                  const count = plots.filter(
-                    (p) =>
-                      !p._deleted &&
-                      (p.plotNumber?.startsWith(r) || (r === "ROW-W07" && p.plotNumber === "WALAG-001"))
-                  ).length;
+                  const count = plotsOfBuilding(plots, r).length;
                   return (
                     <option key={r} value={r}>
-                      {r.replace("ROW-", "Row ")} ({count} plots)
+                      {buildingLabel(r)} ({count} plots)
                     </option>
                   );
                 })}
@@ -1955,7 +1868,7 @@ export default function PlotPositionAdjuster({
 
               <button
                 type="button"
-                onClick={() => setConfirmDeleteRow(buildingConfig?.targetRow || "ROW-E02")}
+                onClick={() => setConfirmDeleteRow(buildingConfig?.targetRow || availableRows[0] || "custom")}
                 disabled={!buildingConfig?.targetRow || buildingConfig.targetRow === "custom"}
                 title="Delete this entire building from the map and database"
                 style={{
@@ -2201,7 +2114,7 @@ export default function PlotPositionAdjuster({
             {/* Length */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
               <span style={{ fontSize: "0.68rem", color: t.textSecondary, minWidth: 60 }}>
-                Length: <strong style={{ color: isLight ? "#059669" : "#34d399" }}>{(buildingConfig?.lengthMeters ?? 26.5).toFixed(1)}m</strong>
+                Length: <strong style={{ color: isLight ? "#059669" : "#34d399" }}>{(buildingConfig?.lengthMeters ?? DEFAULT_BUILDING_LENGTH_M).toFixed(1)}m</strong>
               </span>
               <input
                 type="range"
@@ -2209,7 +2122,7 @@ export default function PlotPositionAdjuster({
                 min="4"
                 max="80"
                 step="0.5"
-                value={buildingConfig?.lengthMeters ?? 26.5}
+                value={buildingConfig?.lengthMeters ?? DEFAULT_BUILDING_LENGTH_M}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
                   if (onUpdateBuildingConfig) {
@@ -2221,14 +2134,14 @@ export default function PlotPositionAdjuster({
               <div style={{ display: "flex", gap: 2 }}>
                 <button
                   type="button"
-                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, lengthMeters: Math.max(4, Number(((prev?.lengthMeters ?? 26.5) - 0.5).toFixed(1))) }))}
+                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, lengthMeters: Math.max(4, Number(((prev?.lengthMeters ?? DEFAULT_BUILDING_LENGTH_M) - 0.5).toFixed(1))) }))}
                   style={{ width: 22, height: 22, background: t.nudgeBtnBg, border: t.nudgeBtnBorder, color: t.nudgeBtnColor, borderRadius: 3, cursor: "pointer", fontSize: "0.68rem", fontWeight: 700 }}
                 >
                   -
                 </button>
                 <button
                   type="button"
-                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, lengthMeters: Math.min(80, Number(((prev?.lengthMeters ?? 26.5) + 0.5).toFixed(1))) }))}
+                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, lengthMeters: Math.min(80, Number(((prev?.lengthMeters ?? DEFAULT_BUILDING_LENGTH_M) + 0.5).toFixed(1))) }))}
                   style={{ width: 22, height: 22, background: t.nudgeBtnBg, border: t.nudgeBtnBorder, color: t.nudgeBtnColor, borderRadius: 3, cursor: "pointer", fontSize: "0.68rem", fontWeight: 700 }}
                 >
                   +
@@ -2239,7 +2152,7 @@ export default function PlotPositionAdjuster({
             {/* Width */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
               <span style={{ fontSize: "0.68rem", color: t.textSecondary, minWidth: 60 }}>
-                Width: <strong style={{ color: isLight ? "#7c3aed" : "#c084fc" }}>{(buildingConfig?.widthMeters ?? 2.8).toFixed(1)}m</strong>
+                Width: <strong style={{ color: isLight ? "#7c3aed" : "#c084fc" }}>{(buildingConfig?.widthMeters ?? DEFAULT_BUILDING_WIDTH_M).toFixed(1)}m</strong>
               </span>
               <input
                 type="range"
@@ -2247,7 +2160,7 @@ export default function PlotPositionAdjuster({
                 min="1"
                 max="20"
                 step="0.2"
-                value={buildingConfig?.widthMeters ?? 2.8}
+                value={buildingConfig?.widthMeters ?? DEFAULT_BUILDING_WIDTH_M}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
                   if (onUpdateBuildingConfig) {
@@ -2259,14 +2172,14 @@ export default function PlotPositionAdjuster({
               <div style={{ display: "flex", gap: 2 }}>
                 <button
                   type="button"
-                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, widthMeters: Math.max(1, Number(((prev?.widthMeters ?? 2.8) - 0.2).toFixed(1))) }))}
+                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, widthMeters: Math.max(1, Number(((prev?.widthMeters ?? DEFAULT_BUILDING_WIDTH_M) - 0.2).toFixed(1))) }))}
                   style={{ width: 22, height: 22, background: t.nudgeBtnBg, border: t.nudgeBtnBorder, color: t.nudgeBtnColor, borderRadius: 3, cursor: "pointer", fontSize: "0.68rem", fontWeight: 700 }}
                 >
                   -
                 </button>
                 <button
                   type="button"
-                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, widthMeters: Math.min(20, Number(((prev?.widthMeters ?? 2.8) + 0.2).toFixed(1))) }))}
+                  onClick={() => onUpdateBuildingConfig && onUpdateBuildingConfig((prev) => ({ ...prev, widthMeters: Math.min(20, Number(((prev?.widthMeters ?? DEFAULT_BUILDING_WIDTH_M) + 0.2).toFixed(1))) }))}
                   style={{ width: 22, height: 22, background: t.nudgeBtnBg, border: t.nudgeBtnBorder, color: t.nudgeBtnColor, borderRadius: 3, cursor: "pointer", fontSize: "0.68rem", fontWeight: 700 }}
                 >
                   +
@@ -2277,7 +2190,7 @@ export default function PlotPositionAdjuster({
             {/* Angle */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
               <span style={{ fontSize: "0.68rem", color: t.textSecondary, minWidth: 60 }}>
-                Angle: <strong style={{ color: isLight ? "#d97706" : "#fbbf24" }}>{(buildingConfig?.angleDeg ?? 37.7).toFixed(1)}°</strong>
+                Angle: <strong style={{ color: isLight ? "#d97706" : "#fbbf24" }}>{(buildingConfig?.angleDeg ?? DEFAULT_GRID_ANGLE_DEG).toFixed(1)}°</strong>
               </span>
               <div style={{ display: "flex", gap: 4 }}>
                 {[-5, -0.5, 0.5, 5].map((delta) => (
@@ -2287,7 +2200,7 @@ export default function PlotPositionAdjuster({
                     onClick={() => {
                       if (!onUpdateBuildingConfig) return;
                       onUpdateBuildingConfig((prev) => {
-                        let a = (prev?.angleDeg ?? 37.7) + delta;
+                        let a = (prev?.angleDeg ?? DEFAULT_GRID_ANGLE_DEG) + delta;
                         if (a < 0) a += 360;
                         if (a >= 360) a -= 360;
                         return { ...prev, angleDeg: Number(a.toFixed(1)) };
@@ -2450,7 +2363,7 @@ export default function PlotPositionAdjuster({
               }}
             >
               <Trash2 size={12} />
-              <span>Delete Entire {buildingConfig?.targetRow ? buildingConfig.targetRow.replace("ROW-", "Row ") : "Building"}</span>
+              <span>Delete Entire {buildingConfig?.targetRow ? buildingLabel(buildingConfig.targetRow) : "Building"}</span>
             </button>
 
             <div style={{ display: "flex", gap: 6 }}>
@@ -2542,7 +2455,7 @@ export default function PlotPositionAdjuster({
         </div>
       )}
 
-      {/* ─── Bolonsiri Master Preset Confirmation Modal ─── */}
+      {/* ─── Layout Preset Confirmation Modal ─── */}
       {showPresetModal && (
         <div
           style={{
@@ -2590,10 +2503,10 @@ export default function PlotPositionAdjuster({
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <h4 style={{ margin: 0, fontSize: "0.92rem", fontWeight: 700, color: t.textPrimary }}>
-                  Apply Bolonsiri Master Preset?
+                  Apply the “{LAYOUT_PRESET_SUMMARY.name}” preset?
                 </h4>
                 <p style={{ margin: 0, fontSize: "0.72rem", color: t.textSecondary, lineHeight: 1.4 }}>
-                  Load and calibrate all 12 apartment building rows to match the drone & satellite concrete foundation alignment.
+                  {LAYOUT_PRESET?.description || `Load and calibrate all ${LAYOUT_PRESET_SUMMARY.rowCount} building rows from the layout preset.`}
                 </p>
               </div>
             </div>
@@ -2612,24 +2525,18 @@ export default function PlotPositionAdjuster({
             >
               <div style={{ display: "flex", justifyContent: "space-between", color: t.textSecondary }}>
                 <span>Active Apartment Buildings:</span>
-                <strong style={{ color: t.textPrimary }}>12 Rows</strong>
+                <strong style={{ color: t.textPrimary }}>{LAYOUT_PRESET_SUMMARY.rowCount} Rows</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", color: t.textSecondary }}>
                 <span>Total Pinned Plots:</span>
-                <strong style={{ color: "#10b981" }}>119 Plots</strong>
+                <strong style={{ color: "#10b981" }}>{LAYOUT_PRESET_SUMMARY.totalPlots} Plots</strong>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", color: t.textSecondary }}>
-                <span>East Wing (Rows E01 – E07):</span>
-                <span style={{ color: t.textPrimary }}>7 Rows (77 plots)</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", color: t.textSecondary }}>
-                <span>West Wing (Rows W03, W05 – W08):</span>
-                <span style={{ color: t.textPrimary }}>5 Rows (42 plots)</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", color: t.textSecondary }}>
-                <span>Clean Foundations (W01, W02, W04):</span>
-                <span style={{ color: t.textMuted }}>Graves preserved in Unplaced</span>
-              </div>
+              {LAYOUT_DELETED_ROWS.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: t.textSecondary }}>
+                  <span>Retired rows ({LAYOUT_DELETED_ROWS.map(buildingLabel).join(", ")}):</span>
+                  <span style={{ color: t.textMuted }}>Graves preserved in Unplaced</span>
+                </div>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -2732,7 +2639,7 @@ export default function PlotPositionAdjuster({
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <h4 id="adjuster-delete-title" style={{ margin: 0, fontSize: "0.92rem", fontWeight: 700, color: t.textPrimary }}>
-                  Delete {confirmDeleteRow.replace("ROW-", "Row ")}?
+                  Delete {buildingLabel(confirmDeleteRow)}?
                 </h4>
                 <p style={{ margin: 0, fontSize: "0.72rem", color: t.textSecondary, lineHeight: 1.4 }}>
                   Are you sure you want to completely remove this building structure from the map?

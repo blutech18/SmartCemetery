@@ -8,6 +8,7 @@ import { Landmark, AlertTriangle, ArrowRight, Lock, Mail, ChevronLeft, Eye, EyeO
 import { PublicThemeToggle } from "@/components/ui/PublicThemeToggle";
 import { toast } from "sonner";
 import { resolveCallback } from "@/lib/route-access";
+import { SITE_SHORT_NAME } from "@/lib/config";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -83,7 +84,7 @@ function LoginForm() {
           </Link>
 
           <h1 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#fff', marginBottom: '1.5rem', lineHeight: 1.2, letterSpacing: '-0.02em' }}>
-            Bolonsori<br/>Digital Management
+            {SITE_SHORT_NAME}<br/>Digital Management
           </h1>
 
           <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: '400px' }}>

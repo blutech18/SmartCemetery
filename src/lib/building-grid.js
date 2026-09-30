@@ -2,13 +2,27 @@
  * Building Grid & Responsive Plot Subdivision Utility
  *
  * Provides pure mathematical functions to project, rotate, subdivide,
- * and snap rectangular building blocks (e.g. Bolonsori apartment crypts)
+ * and snap rectangular building blocks (e.g. apartment crypt rows)
  * into individual plot cells with precise GPS coordinates.
  */
 
+import {
+  DEFAULT_BUILDING_TIERS,
+  DEFAULT_BUILDING_WIDTH_M,
+  DEFAULT_GRID_ANGLE_DEG,
+  DEFAULT_MAP_CENTER,
+} from "./config";
+import {
+  DEFAULT_BUILDING_PREFIX,
+  belongsToBuilding,
+  buildingPlotNumber,
+  getBuildingKey,
+  sectionFromPlotNumber,
+} from "./cemetery-layout";
+
 export const M_TO_LAT = 1 / 110574;
 
-export function mToLng(lat = 8.4657) {
+export function mToLng(lat = DEFAULT_MAP_CENTER.lat) {
   return 1 / (111320 * Math.cos((lat * Math.PI) / 180));
 }
 
@@ -102,9 +116,9 @@ export function getSubdividedBuildingCells({
   let rowPrefix = targetRow;
   if (!rowPrefix || rowPrefix === "custom") {
     rowPrefix =
-      getRowKey(firstPlot) ||
-      (firstPlot?.plotNumber ? firstPlot.plotNumber.replace(/-C\d+$/, "") : null) ||
-      "ROW";
+      getBuildingKey(firstPlot) ||
+      sectionFromPlotNumber(firstPlot?.plotNumber) ||
+      DEFAULT_BUILDING_PREFIX;
   }
   const locationDetailId = firstPlot?.locationDetailId || firstPlot?.locationDetail?.id || null;
 
@@ -158,7 +172,7 @@ export function getSubdividedBuildingCells({
         do {
           generatedPlotNumber =
             rowPrefix && rowPrefix !== "custom"
-              ? `${rowPrefix}-C${String(n).padStart(2, "0")}`
+              ? buildingPlotNumber(rowPrefix, n)
               : `Plot ${n}`;
           n++;
         } while (usedNumbers.has(generatedPlotNumber));
@@ -168,6 +182,9 @@ export function getSubdividedBuildingCells({
           isNew: true,
           plotNumber: generatedPlotNumber,
           locationDetailId,
+          // Carried to the server so a new building plot is saved as one.
+          totalTiers: DEFAULT_BUILDING_TIERS,
+          _buildingKey: rowPrefix && rowPrefix !== "custom" ? rowPrefix : null,
           status: "available",
           graves: [],
         };
@@ -194,7 +211,7 @@ export function getSubdividedBuildingCells({
  * Snaps a building footprint directly to the existing GPS coordinates of a row.
  * Automatically computes centerLat, centerLng, and lengthMeters.
  */
-export function snapBuildingToPlots(targetPlots, defaultAngle = 37.7) {
+export function snapBuildingToPlots(targetPlots, defaultAngle = DEFAULT_GRID_ANGLE_DEG) {
   const valid = (targetPlots || []).filter(
     (p) => p && p.gpsLat != null && p.gpsLng != null && !isNaN(Number(p.gpsLat)) && !isNaN(Number(p.gpsLng))
   );
@@ -209,7 +226,7 @@ export function snapBuildingToPlots(targetPlots, defaultAngle = 37.7) {
   const centerLat = sumLat / valid.length;
   const centerLng = sumLng / valid.length;
 
-  let detectedAngle = defaultAngle ?? 37.7;
+  let detectedAngle = defaultAngle ?? DEFAULT_GRID_ANGLE_DEG;
   if (valid.length >= 2) {
     let sxx = 0;
     let syy = 0;
@@ -226,7 +243,7 @@ export function snapBuildingToPlots(targetPlots, defaultAngle = 37.7) {
       const angleRad = 0.5 * Math.atan2(2 * sxy, sxx - syy);
       let deg = (angleRad * 180) / Math.PI;
       if (deg < 0) deg += 180;
-      const targetDeg = defaultAngle ?? 37.7;
+      const targetDeg = defaultAngle ?? DEFAULT_GRID_ANGLE_DEG;
       while (Math.abs(deg - targetDeg) > 90) {
         if (deg > targetDeg) deg -= 180;
         else deg += 180;
@@ -253,7 +270,7 @@ export function snapBuildingToPlots(targetPlots, defaultAngle = 37.7) {
 
   const spanDx = maxDx - minDx;
   const lengthMeters = Math.max(5.0, Number((spanDx + 2.65).toFixed(1)));
-  const widthMeters = 2.8;
+  const widthMeters = DEFAULT_BUILDING_WIDTH_M;
 
   return {
     centerLat: Number(centerLat.toFixed(8)),
@@ -301,11 +318,7 @@ export function applyBuildingCellsToPlots(cells, allPlots, targetRow = null) {
     }
   }
 
-  const belongsToRow = (p) => {
-    if (!targetRow || targetRow === "custom") return false;
-    if (targetRow === "ROW-W07" && p.plotNumber === "WALAG-001") return true;
-    return p.plotNumber?.startsWith(targetRow) || getRowKey(p) === targetRow;
-  };
+  const belongsToRow = (p) => belongsToBuilding(p, targetRow);
 
   const updatedExisting = allPlots.map((p) => {
     const newCoords = cellPlotMap.get(p.id);
@@ -353,20 +366,4 @@ export function applyBuildingCellsToPlots(cells, allPlots, targetRow = null) {
   });
 
   return [...updatedExisting, ...newPlotsToAdd];
-}
-
-/**
- * Resolves the apartment row identifier for a plot (e.g. 'ROW-E01', 'ROW-W07').
- * Returns null if the plot is not an apartment row building plot.
- */
-export function getRowKey(plot) {
-  if (!plot) return null;
-  if (plot.plotNumber === "WALAG-001") return "ROW-W07";
-  const m = plot.plotNumber?.match(/^(ROW-[EW]\d+)/);
-  if (m) return m[1];
-  if (plot.locationDetail?.subsection?.startsWith("ROW-")) {
-    const mSub = plot.locationDetail.subsection.match(/^(ROW-[EW]\d+)/);
-    if (mSub) return mSub[1];
-  }
-  return null;
 }

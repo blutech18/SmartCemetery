@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Landmark, Search, Map, BarChart3, ChevronRight, Fingerprint, User } from "lucide-react";
 import { PublicThemeToggle } from "@/components/ui/PublicThemeToggle";
+import { SITE_NAME } from "@/lib/config";
 
 export default function LandingPage() {
   const [query, setQuery] = useState("");
@@ -34,7 +35,7 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className={`premium-nav ${isScrolled ? "scrolled" : ""}`}>
         <Link href="/" className="premium-brand fade-in-up">
-          <span>Bolonsori Public Cemetery</span>
+          <span>{SITE_NAME}</span>
         </Link>
         <div className="premium-nav-links fade-in-up delay-100">
           <Link href="/search" className="btn btn-ghost">
@@ -115,7 +116,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="premium-footer fade-in-up delay-300">
-        <p>© {new Date().getFullYear()} Bolonsori Public Cemetery Platform. A premium digital heritage project.</p>
+        <p>© {new Date().getFullYear()} {SITE_NAME} Platform. A premium digital heritage project.</p>
       </footer>
     </div>
   );

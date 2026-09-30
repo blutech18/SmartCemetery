@@ -5,7 +5,10 @@ import { getClientIp, writeAuditLog } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
-/** AppSetting key holding the cemetery boundary polygon vertex offsets. */
+/**
+ * AppSetting key holding the cemetery boundary polygon vertex offsets. The
+ * name is historical; it is kept so boundaries saved earlier remain valid.
+ */
 const BOUNDARY_KEY = "cmp_boundary_offsets";
 const MIN_OFFSETS = 3;
 const MAX_OFFSETS = 200;
@@ -90,6 +93,25 @@ export async function PUT(request) {
       details: { vertices: offsets.length },
     });
     return NextResponse.json({ offsets });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+// DELETE /api/settings/boundary — Admin-only reset: remove the saved boundary so
+// clients fall back to the default derived from the building plots.
+export async function DELETE(request) {
+  const auth = await requireRole(request, "layout");
+  if (!auth.ok) return auth.response;
+
+  try {
+    await prisma.appSetting.deleteMany({ where: { key: BOUNDARY_KEY } });
+    await writeAuditLog({
+      userId: auth.user.id,
+      action: "boundary.reset",
+      ipAddress: getClientIp(request),
+    });
+    return NextResponse.json({ offsets: null });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

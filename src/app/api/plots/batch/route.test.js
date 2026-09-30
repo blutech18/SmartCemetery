@@ -127,4 +127,48 @@ describe("POST /api/plots/batch", () => {
       data: { gpsLat: null, gpsLng: null },
     });
   });
+
+  describe("creating new plots", () => {
+    beforeEach(() => {
+      prisma.plot.upsert.mockImplementation((args) => ({ id: 900, ...args.create }));
+    });
+
+    it("uses an explicit section and stores the tier count", async () => {
+      const res = await POST(
+        makeRequest({ plots: [{ plotNumber: "X-C01", locationDetailId: 7, totalTiers: 4, gpsLat: 8.4, gpsLng: 124.6 }] })
+      );
+      expect(res.status).toBe(200);
+      const { create } = prisma.plot.upsert.mock.calls[0][0];
+      expect(create).toMatchObject({ plotNumber: "X-C01", locationDetailId: 7, totalTiers: 4 });
+    });
+
+    it("finds the section by the named building, whatever it is called", async () => {
+      prisma.locationDetail.findMany.mockResolvedValue([{ id: 31, subsection: "Crypt Block 2" }]);
+      await POST(
+        makeRequest({ plots: [{ plotNumber: "Whatever-7", buildingKey: "crypt block 2", totalTiers: 3, gpsLat: 8.4, gpsLng: 124.6 }] })
+      );
+      expect(prisma.plot.upsert.mock.calls[0][0].create).toMatchObject({ locationDetailId: 31, totalTiers: 3 });
+    });
+
+    it("falls back to the plot number without its column suffix", async () => {
+      prisma.locationDetail.findMany.mockResolvedValue([{ id: 44, subsection: "Wing A" }]);
+      await POST(makeRequest({ plots: [{ plotNumber: "Wing A-C05", gpsLat: 8.4, gpsLng: 124.6 }] }));
+      expect(prisma.plot.upsert.mock.calls[0][0].create.locationDetailId).toBe(44);
+    });
+
+    it("treats a missing or invalid tier count as an ordinary single-tier lot", async () => {
+      for (const totalTiers of [undefined, 0, -3, 2.5, 99, "x"]) {
+        prisma.plot.upsert.mockClear();
+        await POST(makeRequest({ plots: [{ plotNumber: "L-1", locationDetailId: 7, totalTiers, gpsLat: 8.4, gpsLng: 124.6 }] }));
+        expect(prisma.plot.upsert.mock.calls[0][0].create.totalTiers).toBe(1);
+      }
+    });
+
+    it("skips, rather than guesses, when no section can be resolved", async () => {
+      prisma.locationDetail.findMany.mockResolvedValue([{ id: 1, subsection: "Other" }]);
+      const res = await POST(makeRequest({ plots: [{ plotNumber: "Nowhere-C01", gpsLat: 8.4, gpsLng: 124.6 }] }));
+      expect(prisma.plot.upsert).not.toHaveBeenCalled();
+      expect(res.status).toBe(400);
+    });
+  });
 });

@@ -20,7 +20,7 @@ async function login(page, role) {
   await expect(page).toHaveURL(/\/dashboard(?:\/|$)/);
   // Confirm the authenticated dashboard shell rendered. Role-specific coverage
   // is asserted by each test's role-scoped navigation checks below.
-  await expect(page.locator(".sidebar-brand-text")).toContainText("Bolonsori");
+  await expect(page.locator(".sidebar-brand-text")).toContainText(process.env.E2E_SITE_SHORT_NAME || "Bolonsori");
 }
 
 test("Admin sees and opens administrative operations", async ({ page }, testInfo) => {

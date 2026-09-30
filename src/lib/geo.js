@@ -7,11 +7,14 @@
  * objects `{ gpsLat, gpsLng, ... }`.
  */
 
+import { isBuildingPlot } from "./cemetery-layout";
+import { DEFAULT_MAP_CENTER } from "./config";
+
 /** Metres per degree of latitude (constant). */
 export const M_TO_LAT = 1 / 110574;
 
 /** Degrees of longitude per metre at a given latitude. */
-export function mToLng(lat = 8.4657) {
+export function mToLng(lat = DEFAULT_MAP_CENTER.lat) {
   return 1 / (111320 * Math.cos((lat * Math.PI) / 180));
 }
 
@@ -89,13 +92,9 @@ export function scalePlots(plots, centerLat, centerLng, scaleFactor, filterFn = 
 export function getPlotsBoundingBox(plots, filterFn = null) {
   let target = filterFn ? plots.filter(filterFn) : plots;
   if (!filterFn) {
-    const cmpOnly = target.filter(
-      (p) =>
-        p.plotNumber?.startsWith("ROW-") ||
-        p.plotNumber === "WALAG-001" ||
-        p.locationDetail?.subsection?.startsWith("ROW-")
-    );
-    if (cmpOnly.length > 0) target = cmpOnly;
+    // Frame the buildings when there are any, ignoring stray ordinary lots.
+    const buildingsOnly = target.filter(isBuildingPlot);
+    if (buildingsOnly.length > 0) target = buildingsOnly;
   }
   const valid = target.filter(hasFiniteGps);
   if (valid.length === 0) return null;

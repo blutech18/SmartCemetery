@@ -139,9 +139,9 @@ export function AdminDashboard() {
         }
         actions={
           <>
-            <Button variant="secondary" href="/dashboard/map?locate=bolonsiri">
+            <Button variant="secondary" href="/dashboard/map?locate=cemetery">
               <Compass size={15} />
-              Locate Bolonsiri
+              Locate Cemetery
             </Button>
             <Button variant="secondary" href="/dashboard/broadcasts">
               <Radio size={15} />

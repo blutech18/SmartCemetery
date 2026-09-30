@@ -5,8 +5,11 @@ import {
   getInitials,
   extractPlotTiers,
   getPlotSummaryNames,
+  getPlotOccupantNames,
+  getPlotPhoto,
   statusMeta,
   getGravePhoto,
+  tierLabel,
 } from "./plot-format";
 
 describe("plot-format", () => {
@@ -42,56 +45,99 @@ describe("plot-format", () => {
     expect(getInitials(null)).toBe("?");
   });
 
-  it("derives tiers from real grave records and never fabricates occupants", () => {
+
+  it("labels tiers for single lots and stacks", () => {
+    expect(tierLabel(1, 1)).toBe("Ground Burial Lot");
+    expect(tierLabel(1, 4)).toBe("Tier 1 (Ground Level)");
+    expect(tierLabel(3, 4)).toBe("Tier 3 (Third Level)");
+    expect(tierLabel(4, 4)).toBe("Tier 4 (Top Level)");
+  });
+
+  it("derives tiers from real grave rows and never fabricates occupants", () => {
     const plot = {
       plotNumber: "ROW-W07-C01",
       locationDetail: { subsection: "ROW-W07" },
+      totalTiers: 4,
       status: "occupied",
       graves: [
         {
           id: 1,
           tier: 1,
+          status: "active",
           deceasedName: "Real Person",
           burialDate: "2020-01-01",
-          details: { causeOfDeath: "x", contactPerson: "Kin" },
+          birthDate: "1940-02-15",
+          deathDate: "2020-01-01",
+          details: { causeOfDeath: "x", contactPerson: "Kin", notes: "remarks" },
         },
       ],
     };
     const tiers = extractPlotTiers(plot);
+    expect(tiers).toHaveLength(4);
     const occupant = tiers.find((t) => t.status === "occupied");
-    expect(occupant.deceasedName).toBe("Real Person");
-    // No hardcoded "Walag" data may appear for an unrelated row plot.
-    expect(tiers.some((t) => (t.deceasedName || "").includes("Walag"))).toBe(false);
+    expect(occupant).toMatchObject({
+      id: 1,
+      deceasedName: "Real Person",
+      birthDate: "1940-02-15",
+      deathDate: "2020-01-01",
+      notes: "remarks",
+    });
+    expect(tiers.filter((t) => t.status === "available")).toHaveLength(3);
+    expect(formatPlotDate(occupant.birthDate)).toBe("February 15th, 1940");
   });
 
-  it("parses an explicit apartment niche stack", () => {
+  it("uses Plot.totalTiers and treats a plot with no grave as available", () => {
+    expect(extractPlotTiers({ plotNumber: "A-1", totalTiers: 1, status: "available", graves: [] })).toEqual([
+      { tier: 1, label: "Ground Burial Lot", status: "available", photo: null },
+    ]);
+    expect(extractPlotTiers({ plotNumber: "A-1", totalTiers: 3, graves: [] })).toHaveLength(3);
+    expect(extractPlotTiers(null)).toEqual([]);
+  });
+
+  it("never shows fewer tiers than the highest grave tier", () => {
+    const plot = { plotNumber: "A-1", totalTiers: 1, graves: [{ id: 1, tier: 3, deceasedName: "X", status: "active" }] };
+    expect(extractPlotTiers(plot)).toHaveLength(3);
+  });
+
+  it("resolves tier photos from PlotPhoto rows with plot-wide fallback", () => {
     const plot = {
-      graves: [
-        {
-          details: {
-            notes: JSON.stringify({
-              type: "apartment_niche_stack",
-              tiers: [{ tier: 1, deceasedName: "A", status: "occupied" }],
-            }),
-          },
-        },
+      plotNumber: "ROW-1",
+      totalTiers: 4,
+      photos: [
+        { tier: 0, url: "/plot.jpg" },
+        { tier: 2, url: "/t2.jpg" },
       ],
+      graves: [],
     };
     const tiers = extractPlotTiers(plot);
-    expect(tiers).toHaveLength(1);
-    expect(tiers[0].deceasedName).toBe("A");
+    expect(tiers.find((t) => t.tier === 2).photo).toBe("/t2.jpg");
+    expect(tiers.find((t) => t.tier === 1).photo).toBe("/plot.jpg");
+    expect(getPlotPhoto(plot)).toBe("/plot.jpg");
+    expect(getPlotPhoto({})).toBeNull();
   });
 
-  it("summarizes combined names from a single grave string", () => {
+  it("gets a grave's photo from its plot's photos", () => {
+    const grave = { tier: 2, plot: { photos: [{ tier: 0, url: "/p.jpg" }, { tier: 2, url: "/t2.jpg" }] } };
+    expect(getGravePhoto(grave)).toBe("/t2.jpg");
+    expect(getGravePhoto({ tier: 3, plot: grave.plot })).toBe("/p.jpg");
+    expect(getGravePhoto(null)).toBeNull();
+    expect(getGravePhoto({})).toBeNull();
+  });
+
+  it("lists occupant names in tier order and splits a single combined name", () => {
     expect(
-      getPlotSummaryNames({ plotNumber: "X", graves: [{ deceasedName: "A & B" }] })
+      getPlotOccupantNames({ graves: [{ tier: 2, deceasedName: "B" }, { tier: 1, deceasedName: "A" }] })
     ).toEqual(["A", "B"]);
-    expect(
-      getPlotSummaryNames({ plotNumber: "X", graves: [{ deceasedName: "A / B" }] })
-    ).toEqual(["A", "B"]);
-    expect(
-      getPlotSummaryNames({ plotNumber: "X", graves: [{ deceasedName: "A and B" }] })
-    ).toEqual(["A", "B"]);
+    expect(getPlotOccupantNames({ graves: [{ deceasedName: "A & B" }] })).toEqual(["A", "B"]);
+    expect(getPlotOccupantNames({ graves: [{ deceasedName: "A / B" }] })).toEqual(["A", "B"]);
+    expect(getPlotOccupantNames({ graves: [{ deceasedName: "A and B" }] })).toEqual(["A", "B"]);
+    expect(getPlotOccupantNames({ graves: [] })).toEqual([]);
+  });
+
+  it("summary names fall back to the plot number", () => {
+    expect(getPlotSummaryNames({ plotNumber: "X", graves: [] })).toEqual(["Plot X"]);
+    expect(getPlotSummaryNames({ plotNumber: "X", graves: [{ deceasedName: "A" }] })).toEqual(["A"]);
+    expect(getPlotSummaryNames(null)).toEqual([]);
   });
 
   it("maps statuses to presentation metadata with a safe default", () => {
@@ -99,89 +145,5 @@ describe("plot-format", () => {
     expect(statusMeta("available").label).toBe("Available");
     expect(statusMeta("hold").label).toBe("Hold / Reserved");
     expect(statusMeta("something-else").label).toBe("Unavailable");
-  });
-
-  it("extracts photos from grave records and tier stacks via getGravePhoto", () => {
-    expect(getGravePhoto(null)).toBeNull();
-    expect(getGravePhoto({})).toBeNull();
-    expect(getGravePhoto({ photo: "/images/custom.jpg" })).toBe("/images/custom.jpg");
-
-    // From JSON notes
-    expect(
-      getGravePhoto({
-        details: {
-          notes: JSON.stringify({ photo: "/uploads/graves/test.jpg" }),
-        },
-      })
-    ).toBe("/uploads/graves/test.jpg");
-
-    // From apartment niche stack
-    expect(
-      getGravePhoto({
-        details: {
-          notes: JSON.stringify({
-            type: "apartment_niche_stack",
-            tiers: [{ tier: 1, photo: "/uploads/graves/tier1.jpg" }],
-          }),
-        },
-      })
-    ).toBe("/uploads/graves/tier1.jpg");
-  });
-
-  it("extracts birthDate and deathDate across apartment niche stacks and single plots", () => {
-    // Single traditional plot
-    const singlePlot = {
-      plotNumber: "GR-001",
-      status: "occupied",
-      graves: [
-        {
-          id: 10,
-          deceasedName: "John Doe",
-          burialDate: "2021-05-10",
-          details: {
-            notes: JSON.stringify({
-              birthDate: "1940-02-15",
-              deathDate: "2021-05-01",
-              text: "Beloved father",
-            }),
-          },
-        },
-      ],
-    };
-    const singleTiers = extractPlotTiers(singlePlot);
-    expect(singleTiers).toHaveLength(1);
-    expect(singleTiers[0].birthDate).toBe("1940-02-15");
-    expect(singleTiers[0].deathDate).toBe("2021-05-01");
-    expect(formatPlotDate(singleTiers[0].birthDate)).toBe("February 15th, 1940");
-    expect(formatPlotDate(singleTiers[0].deathDate)).toBe("May 1st, 2021");
-
-    // Apartment stack
-    const stackPlot = {
-      plotNumber: "ROW-W08-C09",
-      graves: [
-        {
-          id: 157,
-          deceasedName: "Nimfa Walag",
-          details: {
-            notes: JSON.stringify({
-              type: "apartment_niche_stack",
-              tiers: [
-                {
-                  tier: 1,
-                  deceasedName: "Nimfa Walag",
-                  birthDate: "1959-05-12",
-                  deathDate: "2021-10-10",
-                  status: "occupied",
-                },
-                { tier: 2, status: "available" },
-              ],
-            }),
-          },
-        },
-      ],
-    };
-    const stackTiers = extractPlotTiers(stackPlot);
-    expect(stackTiers[0].birthDate).toBe("1959-05-12");
-    expect(stackTiers[0].deathDate).toBe("2021-10-10");
   });
 });

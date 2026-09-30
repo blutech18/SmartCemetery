@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 import { useIsClient } from "@/lib/use-is-client";
-import { getGravePhoto } from "@/lib/plot-format";
+import { getGravePhoto, tierLabel } from "@/lib/plot-format";
 
 const EMPTY_FORM = {
   deceasedName: "",
@@ -111,86 +111,6 @@ export default function GravesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const cleanedNotes = form.notes.trim();
-      const birthDateVal = form.dateOfBirth ? form.dateOfBirth.trim() : null;
-      const deathDateVal = form.dateOfDeath ? form.dateOfDeath.trim() : null;
-      let savedNotes = cleanedNotes || null;
-
-      if (editingId) {
-        const existing = editingGrave || displayGraves.find((g) => g.id === editingId) || graves.find((g) => g.id === editingId);
-        if (existing?.details?.notes) {
-          try {
-            const parsed = JSON.parse(existing.details.notes);
-            if (parsed && typeof parsed === "object") {
-              parsed.text = cleanedNotes || undefined;
-              if (birthDateVal) {
-                parsed.birthDate = birthDateVal;
-              } else {
-                delete parsed.birthDate;
-                delete parsed.dateOfBirth;
-              }
-              if (deathDateVal) {
-                parsed.deathDate = deathDateVal;
-              } else {
-                delete parsed.deathDate;
-                delete parsed.dateOfDeath;
-              }
-
-              if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
-                const matchingTier = parsed.tiers.find((t) => t.deceasedName === form.deceasedName) || parsed.tiers[0];
-                if (matchingTier) {
-                  matchingTier.notes = cleanedNotes || undefined;
-                  if (birthDateVal) {
-                    matchingTier.birthDate = birthDateVal;
-                  } else {
-                    delete matchingTier.birthDate;
-                    delete matchingTier.dateOfBirth;
-                  }
-                  if (deathDateVal) {
-                    matchingTier.deathDate = deathDateVal;
-                  } else {
-                    delete matchingTier.deathDate;
-                    delete matchingTier.dateOfDeath;
-                  }
-                }
-              }
-              if (!photoFile && form.photo !== undefined) {
-                parsed.photo = form.photo || null;
-                const matchingTier = parsed.tiers?.find((t) => t.deceasedName === form.deceasedName) || parsed.tiers?.[0];
-                if (matchingTier) {
-                  matchingTier.photo = form.photo || null;
-                }
-              }
-              savedNotes = JSON.stringify(parsed);
-            }
-          } catch {
-            // raw string notes was previously stored
-            if (birthDateVal || deathDateVal || (!photoFile && form.photo)) {
-              savedNotes = JSON.stringify({
-                text: cleanedNotes || undefined,
-                birthDate: birthDateVal || undefined,
-                deathDate: deathDateVal || undefined,
-                photo: (!photoFile && form.photo) || undefined,
-              });
-            }
-          }
-        } else if (birthDateVal || deathDateVal || (!photoFile && form.photo)) {
-          savedNotes = JSON.stringify({
-            text: cleanedNotes || undefined,
-            birthDate: birthDateVal || undefined,
-            deathDate: deathDateVal || undefined,
-            photo: (!photoFile && form.photo) || undefined,
-          });
-        }
-      } else if (birthDateVal || deathDateVal || (!photoFile && form.photo)) {
-        savedNotes = JSON.stringify({
-          text: cleanedNotes || undefined,
-          birthDate: birthDateVal || undefined,
-          deathDate: deathDateVal || undefined,
-          photo: (!photoFile && form.photo) || undefined,
-        });
-      }
-
       const res = await fetch(editingId ? `/api/graves/${editingId}` : "/api/graves", {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -199,10 +119,12 @@ export default function GravesPage() {
           plotId: parseInt(form.plotId),
           tier: form.tier ? parseInt(form.tier) : 1,
           burialDate: form.burialDate || null,
+          birthDate: form.dateOfBirth || null,
+          deathDate: form.dateOfDeath || null,
           causeOfDeath: form.causeOfDeath || null,
           contactPerson: form.contactPerson || null,
           contactPhone: form.contactPhone || null,
-          notes: savedNotes || null,
+          notes: form.notes.trim() || null,
         }),
       });
 
@@ -219,7 +141,6 @@ export default function GravesPage() {
       if (targetGraveId && photoFile) {
         const formData = new FormData();
         formData.append("file", photoFile);
-        formData.append("applyToAll", "true");
         try {
           const photoRes = await fetch(`/api/graves/${targetGraveId}/photo`, {
             method: "POST",
@@ -237,7 +158,7 @@ export default function GravesPage() {
           await fetch(`/api/graves/${targetGraveId}/photo`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ photoUrl: form.photo || "reset", applyToAll: true }),
+            body: JSON.stringify({ photoUrl: form.photo || "reset" }),
           });
         } catch {
           // ignore
@@ -273,30 +194,7 @@ export default function GravesPage() {
     setEditingId(grave.id);
     setEditingGrave(grave);
     const photo = getGravePhoto(grave) || "";
-    let rawNotes = grave.details?.notes || "";
-    let textNotes = rawNotes;
-    let birthDate = "";
-    let deathDate = "";
-    try {
-      const parsed = JSON.parse(rawNotes);
-      if (parsed && typeof parsed === "object") {
-        if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
-          const matchingTier = parsed.tiers.find((t) => t.deceasedName === grave.deceasedName) || parsed.tiers[0];
-          textNotes = parsed.text || parsed.notes || matchingTier?.notes || "";
-          birthDate = matchingTier?.birthDate || matchingTier?.dateOfBirth || parsed.birthDate || parsed.dateOfBirth || "";
-          deathDate = matchingTier?.deathDate || matchingTier?.dateOfDeath || parsed.deathDate || parsed.dateOfDeath || "";
-        } else {
-          textNotes = parsed.text || parsed.notes || "";
-          birthDate = parsed.birthDate || parsed.dateOfBirth || "";
-          deathDate = parsed.deathDate || parsed.dateOfDeath || "";
-        }
-      }
-    } catch {
-      // If it looks like raw JSON codebase, sanitize it so code is never displayed
-      if (rawNotes.trim().startsWith("{") && (rawNotes.includes('"') || rawNotes.includes(":"))) {
-        textNotes = "";
-      }
-    }
+    const textNotes = grave.details?.notes || "";
 
     const formatDateForInput = (val) => {
       if (!val) return "";
@@ -315,8 +213,8 @@ export default function GravesPage() {
       deceasedName: grave.deceasedName || "",
       plotId: String(grave.plotId || ""),
       tier: grave.tier || 1,
-      dateOfBirth: formatDateForInput(birthDate),
-      dateOfDeath: formatDateForInput(deathDate),
+      dateOfBirth: formatDateForInput(grave.birthDate),
+      dateOfDeath: formatDateForInput(grave.deathDate),
       burialDate: formatDateForInput(grave.burialDate),
       causeOfDeath: grave.details?.causeOfDeath || "",
       contactPerson: grave.details?.contactPerson || "",
@@ -657,8 +555,8 @@ export default function GravesPage() {
 
                   {(() => {
                     const selectedPlot = plots.find((p) => String(p.id) === String(form.plotId));
-                    const isRow = selectedPlot?.plotNumber?.startsWith("ROW-") || selectedPlot?.locationDetail?.subsection?.startsWith("ROW-");
-                    if (!isRow) return null;
+                    const tierCount = Number(selectedPlot?.totalTiers) || 1;
+                    if (tierCount <= 1) return null;
                     return (
                       <div className="form-group">
                         <label className="form-label">Crypt Niche Tier *</label>
@@ -669,10 +567,11 @@ export default function GravesPage() {
                           required
                           id="grave-form-tier"
                         >
-                          <option value={1}>Tier 1 (Ground Level)</option>
-                          <option value={2}>Tier 2 (Second Level)</option>
-                          <option value={3}>Tier 3 (Upper Level)</option>
-                          <option value={4}>Tier 4 (Top Level)</option>
+                          {Array.from({ length: tierCount }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>
+                              {tierLabel(n, tierCount)}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     );

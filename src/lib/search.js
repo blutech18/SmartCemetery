@@ -40,6 +40,7 @@ const GRAVE_INCLUDE = {
   plot: {
     include: {
       locationDetail: { include: { location: true } },
+      photos: { select: { tier: true, url: true } },
     },
   },
   details: true,

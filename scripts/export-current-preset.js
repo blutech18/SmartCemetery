@@ -1,73 +1,122 @@
+/**
+ * Export the current plot layout of one location as a layout preset
+ * (src/lib/layout-preset.json).
+ *
+ *   node scripts/export-current-preset.js "Name of location"
+ *   PRESET_LOCATION_NAME="Name of location" node scripts/export-current-preset.js
+ *
+ * The location is found by a case-insensitive name match (falling back to the
+ * existing preset's `location.matchName`). Only the plot positions are
+ * regenerated; the preset's identity (name, description, location), tier count,
+ * retired rows and per-row building configs are preserved from the existing
+ * file. Rows that are new will have no building config until one is added.
+ */
 const { PrismaClient } = require("@prisma/client");
 const fs = require("fs");
 const path = require("path");
+
 const prisma = new PrismaClient();
+const presetPath = path.join(__dirname, "../src/lib/layout-preset.json");
+
+function readExisting() {
+  try {
+    return JSON.parse(fs.readFileSync(presetPath, "utf8"));
+  } catch {
+    return {};
+  }
+}
 
 async function main() {
+  const existing = readExisting();
+  const wanted =
+    process.argv[2] || process.env.PRESET_LOCATION_NAME || existing.location?.matchName || "";
+  if (!wanted.trim()) {
+    throw new Error(
+      "Say which location to export: pass its name as an argument or set PRESET_LOCATION_NAME."
+    );
+  }
+
+  const locations = await prisma.location.findMany({
+    where: { name: { contains: wanted.trim() } },
+    select: { id: true, name: true, description: true, gpsLat: true, gpsLng: true },
+  });
+  if (locations.length === 0) throw new Error(`No location matches "${wanted}".`);
+  if (locations.length > 1) {
+    throw new Error(
+      `"${wanted}" matches several locations; be more specific:\n  ` +
+        locations.map((l) => l.name).join("\n  ")
+    );
+  }
+  const location = locations[0];
+
   const plots = await prisma.plot.findMany({
-    where: { locationDetail: { locationId: 4 } },
+    where: { locationDetail: { locationId: location.id } },
     select: {
-      id: true,
       plotNumber: true,
       gpsLat: true,
       gpsLng: true,
       status: true,
-      locationDetail: { select: { id: true, subsection: true } },
-      graves: {
-        select: {
-          id: true,
-          deceasedName: true,
-          burialDate: true
-        }
-      }
+      totalTiers: true,
+      locationDetail: { select: { subsection: true } },
     },
-    orderBy: [{ locationDetail: { subsection: "asc" } }, { plotNumber: "asc" }]
+    orderBy: [{ locationDetail: { sortOrder: "asc" } }, { plotNumber: "asc" }],
   });
 
-  console.log(`Found ${plots.length} total plots in CMP.`);
-  const pinnedPlots = plots.filter((p) => p.gpsLat !== null);
-  const unpinnedPlots = plots.filter((p) => p.gpsLat === null);
-  console.log(`Pinned: ${pinnedPlots.length}, Unpinned: ${unpinnedPlots.length}`);
+  const pinned = plots.filter((p) => p.gpsLat !== null && p.gpsLng !== null);
+  console.log(`${location.name}: ${plots.length} plots, ${pinned.length} pinned, ${plots.length - pinned.length} unpinned.`);
 
-  // Calculate building parameters for each row
   const rows = {};
-  for (const p of pinnedPlots) {
-    const rowKey = p.locationDetail?.subsection || p.plotNumber.slice(0, 7);
-    if (!rows[rowKey]) rows[rowKey] = [];
-    rows[rowKey].push({
+  for (const p of pinned) {
+    const rowKey = p.locationDetail?.subsection;
+    if (!rowKey) continue;
+    (rows[rowKey] ||= []).push({
       plotNumber: p.plotNumber,
       lat: Number(p.gpsLat),
       lng: Number(p.gpsLng),
       status: p.status,
-      hasGraves: p.graves?.length > 0
     });
   }
 
-  const presetData = {
-    name: "Bolonsiri Concrete Apartments (Current Localdev Design)",
-    description: "Exact plot layout and crypt positions aligned with drone/satellite concrete foundations.",
-    totalPlots: pinnedPlots.length,
-    rows: {}
-  };
-
-  for (const [r, list] of Object.entries(rows)) {
-    const lats = list.map((p) => p.lat);
-    const lngs = list.map((p) => p.lng);
-    const centerLat = Number((lats.reduce((a, b) => a + b, 0) / list.length).toFixed(8));
-    const centerLng = Number((lngs.reduce((a, b) => a + b, 0) / list.length).toFixed(8));
-
-    presetData.rows[r] = {
-      rowKey: r,
+  const presetRows = {};
+  for (const [rowKey, list] of Object.entries(rows)) {
+    const mean = (xs) => Number((xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(8));
+    presetRows[rowKey] = {
+      rowKey,
       plotCount: list.length,
-      centerLat,
-      centerLng,
-      plots: list
+      centerLat: mean(list.map((p) => p.lat)),
+      centerLng: mean(list.map((p) => p.lng)),
+      plots: list,
     };
   }
 
-  const exportPath = path.join(__dirname, "../src/lib/bolonsori-preset.json");
-  fs.writeFileSync(exportPath, JSON.stringify(presetData, null, 2), "utf8");
-  console.log(`Exported preset data to ${exportPath}`);
+  const tierCounts = pinned.map((p) => p.totalTiers).filter((n) => n > 1);
+  const preset = {
+    name: existing.name || `${location.name} layout`,
+    description: existing.description || `Plot layout exported from ${location.name}.`,
+    location: {
+      name: location.name,
+      matchName: existing.location?.matchName || wanted.trim(),
+      description: location.description ?? existing.location?.description ?? null,
+      gpsLat: location.gpsLat != null ? Number(location.gpsLat) : existing.location?.gpsLat ?? null,
+      gpsLng: location.gpsLng != null ? Number(location.gpsLng) : existing.location?.gpsLng ?? null,
+    },
+    tiersPerPlot: existing.tiersPerPlot || (tierCounts.length ? Math.max(...tierCounts) : 4),
+    deletedRows: existing.deletedRows || [],
+    rowConfigs: Object.fromEntries(
+      Object.entries(existing.rowConfigs || {}).filter(([key]) => presetRows[key])
+    ),
+    rows: presetRows,
+  };
+
+  fs.writeFileSync(presetPath, JSON.stringify(preset, null, 2) + "\n", "utf8");
+  console.log(`Exported ${pinned.length} plots in ${Object.keys(presetRows).length} rows to ${presetPath}`);
+  const missing = Object.keys(presetRows).filter((k) => !preset.rowConfigs[k]);
+  if (missing.length) console.log(`Rows without a building config: ${missing.join(", ")}`);
 }
 
-main().finally(() => prisma.$disconnect());
+main()
+  .catch((err) => {
+    console.error(err.message);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

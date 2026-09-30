@@ -61,6 +61,25 @@ Seed credentials come from the `SEED_*` variables (minimum 12 characters) and ar
 required by `npm run db:seed`. Rotate them out of any shared environment after the
 first login.
 
+The seed creates **only** the user accounts unless told otherwise:
+
+- `SEED_DEMO_DATA=yes` adds sample sections, invented burial records, requests and
+  feedback. Never use it on a real cemetery database.
+- `SEED_LAYOUT_PRESET=yes` loads the plot layout from `src/lib/layout-preset.json`
+  (positions and tier counts only — no burial records).
+
+`npm run db:setup` enables both automatically for a **local** database, and refuses to
+default secrets (`NEXTAUTH_SECRET`, `ENCRYPTION_KEY`, seed passwords) for any other host.
+
+Set `LAYOUT_LOCATION_NAME` to attach the layout preset to your own location (it is used to
+find an existing location by name and to name a new one) instead of editing the preset file.
+`SEED_DEMO_DATA=yes` is refused when `NODE_ENV=production` unless
+`ALLOW_DEMO_DATA_IN_PRODUCTION=yes` is also set.
+
+Site identity (`NEXT_PUBLIC_SITE_NAME`, `NEXT_PUBLIC_SITE_SHORT_NAME`) and layout defaults
+(`NEXT_PUBLIC_GRID_ANGLE`, `NEXT_PUBLIC_DEFAULT_BUILDING_TIERS`) are optional environment
+variables; see `.env.example`.
+
 ---
 
 ## 4. Build and run
@@ -77,6 +96,12 @@ Behind a process manager or container, run `npm run start` after a successful
 > re-checks role and account state in every API handler. Do not disable either
 > layer. Public endpoints are limited to `/`, `/login`, `/search`, `/kiosk`, and
 > the read-only public APIs.
+>
+> Set `TRUSTED_PROXY_COUNT` (e.g. `1`) to the number of reverse proxies in front
+> of the app. Login, search and routing rate limits are keyed on the client IP;
+> without it the left-most `X-Forwarded-For` value is used, which a client can
+> forge unless your edge proxy overwrites the header.
+>
 
 ---
 

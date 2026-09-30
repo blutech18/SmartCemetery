@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { isAuthorized, requireAuth, requireRole } from "@/lib/authz";
 import { validateBody, validationErrorResponse } from "@/lib/validation";
 import { getClientIp, writeAuditLog } from "@/lib/audit";
-import { decryptGraveDetail } from "@/lib/encryption";
+import { PLOT_LIST_INCLUDE, exposePlot } from "@/lib/plot-query";
+import { schemaOutOfDateResponse } from "@/lib/db-errors";
 
 // Validation schema for plot creation (Req 15).
 // `plotNumber` is optional: when omitted, the server auto-generates the next
@@ -16,45 +17,6 @@ const CREATE_PLOT_SCHEMA = {
 };
 
 const PLOT_INCLUDE = { locationDetail: { include: { location: true } } };
-
-// GraveDetail fields and encryption metadata that must not be exposed to
-// callers without the "verify" permission (i.e. anyone but Admin/Staff). Kept
-// in sync with the public-field policy in `src/app/api/graves/route.js`.
-const PRIVATE_DETAIL_FIELDS = [
-  "contactPerson",
-  "contactPhone",
-  "causeOfDeath",
-  "notes",
-  "encryptionKeyVersion",
-  "notesEncrypted",
-];
-
-// Remove sensitive fields from a GraveDetail so non-staff callers never receive
-// encrypted (or plaintext) sensitive values.
-function stripSensitiveDetail(detail) {
-  if (!detail) return detail;
-  const result = { ...detail };
-  for (const field of PRIVATE_DETAIL_FIELDS) {
-    if (field in result) delete result[field];
-  }
-  return result;
-}
-
-// Prepare a grave's details for a plot listing. Staff/Admin receive decrypted
-// plaintext; every other authenticated caller receives the record with
-// sensitive fields stripped, so encrypted values never leak through the map.
-function exposeGraveDetails(grave, canSeeSensitive) {
-  if (!grave || !grave.details) return grave;
-  if (!canSeeSensitive) {
-    return { ...grave, details: stripSensitiveDetail(grave.details) };
-  }
-  try {
-    return { ...grave, details: decryptGraveDetail(grave.details) };
-  } catch {
-    // Never fall back to raw ciphertext/metadata for a failed decryption.
-    return { ...grave, details: stripSensitiveDetail(grave.details) };
-  }
-}
 
 // Compute the next incremented plot number for a section, e.g. "A1-013".
 // Uses the section's subsection as the prefix and the highest existing trailing
@@ -126,34 +88,17 @@ export async function GET(request) {
     const where = {};
     if (status) where.status = status;
     if (locationId) {
-      where.locationDetail = { locationId: parseInt(locationId) };
+      const parsedLocationId = Number.parseInt(locationId, 10);
+      if (!Number.isInteger(parsedLocationId) || parsedLocationId <= 0) {
+        return NextResponse.json({ error: "Invalid locationId" }, { status: 400 });
+      }
+      where.locationDetail = { locationId: parsedLocationId };
     }
 
     const [plots, total] = await Promise.all([
       prisma.plot.findMany({
         where,
-        include: {
-          locationDetail: { include: { location: true } },
-          graves: {
-            select: {
-              id: true,
-              deceasedName: true,
-              tier: true,
-              status: true,
-              burialDate: true,
-              details: {
-                select: {
-                  causeOfDeath: true,
-                  contactPerson: true,
-                  contactPhone: true,
-                  notes: true,
-                  encryptionKeyVersion: true,
-                  notesEncrypted: true,
-                },
-              },
-            },
-          },
-        },
+        include: PLOT_LIST_INCLUDE,
         orderBy: { plotNumber: "asc" },
         skip: (page - 1) * limit,
         take: limit,
@@ -161,10 +106,7 @@ export async function GET(request) {
       prisma.plot.count({ where }),
     ]);
 
-    const plotsWithDetails = plots.map((p) => ({
-      ...p,
-      graves: (p.graves || []).map((g) => exposeGraveDetails(g, canSeeSensitive)),
-    }));
+    const plotsWithDetails = plots.map((p) => exposePlot(p, canSeeSensitive));
 
     return NextResponse.json(
       {
@@ -178,6 +120,8 @@ export async function GET(request) {
       }
     );
   } catch (error) {
+    const behind = schemaOutOfDateResponse(error, "GET /api/plots");
+    if (behind) return behind;
     console.error("GET /api/plots error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

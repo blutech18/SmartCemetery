@@ -2,7 +2,7 @@
 
 ## Fresh database
 
-Run `npx prisma migrate deploy`. The checked-in chain contains six migrations:
+Run `npx prisma migrate deploy`. The checked-in chain contains eight migrations:
 
 1. `20260701000000_init` creates the original eleven-table schema.
 2. `20260710200224_add_notifications_and_widen_grave_ciphertext` adds notifications and widens encrypted fields.
@@ -10,6 +10,19 @@ Run `npx prisma migrate deploy`. The checked-in chain contains six migrations:
 4. `20260715120000_complete_operational_workflows` adds verification, encryption metadata, broadcasts, navigation metadata, and archival runs.
 5. `20260715133000_add_rate_limit_buckets` adds privacy-preserving database-backed throttle buckets.
 6. `20260928000000_add_app_settings` adds the `app_settings` table for shared non-relational configurations (such as map boundary offsets).
+7. `20260929231150_add_tier_to_graves` adds `graves.tier` and makes `(plot_id, tier)` unique so a plot can hold several tiers.
+8. `20260930000000_normalize_tiers_and_photos` adds `plots.total_tiers`, `graves.birth_date/death_date` and the `plot_photos` table, and sets four tiers for apartment-row plots.
+
+## Upgrading an existing database to the normalized tier model (migration 8)
+
+Earlier versions stored tier occupants, life dates and photos as JSON inside the encrypted `notes` of a "container" grave. The application now reads only the real columns, so existing data must be moved:
+
+1. Back up the database.
+2. `npm run db:migrate` (applies migration 8; schema only).
+3. `npm run db:backfill-tiers` — a **dry run** that prints what would change per plot and writes nothing.
+4. Review the output, then `BACKFILL_CONFIRM=apply npm run db:backfill-tiers`.
+
+The backfill is idempotent and transactional per plot. It decrypts strictly: a plot with any undecryptable field is skipped and reported (exit code 1), never treated as empty. It deletes only empty `Plot <number>` placeholder graves; a placeholder-named record holding real data is kept. Until step 4 is done, tier photos, life dates and multi-tier occupants that lived only in the JSON will not appear in the app.
 
 ## Existing database created with `prisma db push`
 

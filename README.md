@@ -77,7 +77,7 @@ Environment variables are documented in `.env.example` (database connection, aut
 
 ### 3. Set up the database
 
-One command creates the database, applies migrations, generates the Prisma client, and seeds baseline data:
+One command creates the database, applies migrations, generates the Prisma client, and seeds the user accounts. On a **local** database it also loads sample data and the layout preset; against any other database those are opt-in (`SEED_DEMO_DATA=yes`, `SEED_LAYOUT_PRESET=yes`):
 
 ```bash
 npm run db:setup
@@ -88,7 +88,8 @@ Individual steps are also available:
 ```bash
 npm run db:migrate      # apply migrations
 npm run db:generate     # generate Prisma client
-npm run db:seed         # seed baseline data
+npm run db:seed         # seed user accounts (+ demo data / layout preset when enabled)
+npm run db:inspect      # read-only summary of locations, rows, plots and tiers
 ```
 
 ### 4. Run the development server
@@ -110,6 +111,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | `npm test` | Run unit and integration tests (Vitest) |
 | `npm run test:e2e` | Run end-to-end tests (Playwright) |
 | `npm run db:setup` | Create DB, migrate, generate client, and seed |
+| `npm run db:inspect` | Read-only summary of the layout in the database |
+| `npm run db:backfill-tiers` | Move legacy tier/photo data into real columns (dry run by default) |
 | `npm run db:rotate-encryption` | Rotate the encryption key for sensitive fields |
 
 ## Project Structure
@@ -135,6 +138,32 @@ The system follows a three-tier structure within the Next.js framework:
 - **Presentation tier** — role-aware React interfaces for Admin, Staff, and Client across web, mobile, and kiosk, including the interactive map.
 - **Application tier** — Next.js route handlers and server logic for authentication, validation, business rules, and geospatial processing, backed by Prisma.
 - **Data tier** — MySQL relational database storing graves, plots, locations, users, requests, and audit logs, with integrity enforced through indexes and relationship constraints.
+
+### Data model conventions
+
+- **One source of truth per fact.** A plot's tiers are its `Grave` rows (unique on `plotId, tier`); the tier count is `Plot.totalTiers`; life dates are `Grave.birthDate/deathDate`; photos are `PlotPhoto` rows (`tier` 0 = plot-wide, 1..N = a tier). `GraveDetail.notes` is encrypted **free text only** — never store JSON or structured data in it.
+- **Presentation logic lives in `src/lib/plot-format.js`** (pure, unit-tested). Components receive plain plot/grave data from the API and do not parse or reconcile it.
+- **Photos** are validated once in `src/lib/photo-upload.js` (magic-byte sniffing, URL allow-list) and stored via `src/lib/plot-photos.js`.
+- **The layout preset never creates burial records.** It only lays out plots (position, tier count); occupants come from real data entry.
+
+### Site configuration (nothing cemetery-specific lives in components)
+
+| What | Where |
+| --- | --- |
+| Display name, short name | `NEXT_PUBLIC_SITE_NAME`, `NEXT_PUBLIC_SITE_SHORT_NAME` |
+| Map centre, tiles, routing | `NEXT_PUBLIC_MAP_CENTER_*`, `MAP_TILE_URL`, `ROUTING_BASE_URL` |
+| Grid rotation, default tiers per building | `NEXT_PUBLIC_GRID_ANGLE`, `NEXT_PUBLIC_DEFAULT_BUILDING_TIERS` |
+| Which location the layout attaches to | `LAYOUT_LOCATION_NAME` (default: the preset's `location.name`) |
+| Plot layout, rows, retired rows, building geometry | `src/lib/layout-preset.json` (export the live layout with `node scripts/export-current-preset.js "<location>"`) |
+| Boundary polygon | Saved by an Admin on the map; until then derived from the building plots |
+
+A **building** is any plot with `totalTiers > 1`; its row is its section (`locationDetail.subsection`) and column order is the plot number's trailing number (`src/lib/cemetery-layout.js`). Plot-number prefixes such as `ROW-` carry no meaning to the code.
+
+### Frontend structure
+
+- Route pages own data fetching and mode state; reusable logic is extracted into hooks (`use-history-stack`, `use-boundary-settings`) and pure modules (`history-stack`, `map-geometry`).
+- Pure map helpers live in `src/lib/map-geometry.js`; Google Maps marker factories in `src/components/map/map-icons.js`. Import constants from the lib module, not from `CemeteryMap`, so the map stays code-split.
+- Drawer modals live in `src/components/plot-drawer/` and own their own form state.
 
 ## Security and Privacy
 

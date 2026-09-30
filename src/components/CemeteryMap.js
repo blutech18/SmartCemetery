@@ -11,6 +11,37 @@ import {
 } from "@react-google-maps/api";
 import { ChevronDown, AlertTriangle, Check } from "lucide-react";
 import { getClientMapCenter, getClientGoogleMapsApiKey } from "../lib/config";
+import {
+  getPlotStatusColor,
+  getPlotCorners,
+  getBoundaryCoords,
+  getBuildingsCenter,
+  deriveBoundaryOffsets,
+  coordsToBoundaryOffsets,
+} from "@/lib/map-geometry";
+import {
+  belongsToBuilding,
+  columnShortLabel,
+  compareByColumn,
+  getBuildingKey,
+  isBuildingPlot,
+} from "@/lib/cemetery-layout";
+import { DEFAULT_GRID_ANGLE_DEG } from "@/lib/config";
+import {
+  getBuildingMoveAnchorIcon,
+  getBuildingLengthHandleIcon,
+  getBuildingWidthHandleIcon,
+  getBuildingRotateHandleIcon,
+  getBuildingApplyHandleIcon,
+  getBlockTitleBadgeIcon,
+  BLUE_PIN_ICON,
+  createPlotLabelIcon,
+  circleSymbol,
+  draftSymbol,
+  getMoveAnchorIcon,
+  getRotateHandleIcon,
+} from "./map/map-icons";
+import { getPlotOccupantNames, getPlotSummaryNames } from "@/lib/plot-format";
 import { getPlotsBoundingBox, translatePlots, rotatePlots, M_TO_LAT } from "@/lib/geo";
 import {
   localOffsetToLatLng,
@@ -18,223 +49,7 @@ import {
   getBuildingCorners,
   getSubdividedBuildingCells,
   snapBuildingToPlots,
-  getRowKey,
 } from "../lib/building-grid";
-
-// Plot Status Color Palette (matches reference plot-map design)
-export function getPlotStatusColor(status) {
-  switch (status?.toLowerCase()) {
-    case "occupied":
-      return "#E15B52"; // Salmon Red (Occupied)
-    case "available":
-      return "#7CC47F"; // Soft Green (Available)
-    case "reserved":
-    case "hold":
-      return "#C9CDDC"; // Light Gray-Lavender (Hold)
-    case "sold":
-      return "#CDB553"; // Khaki Yellow (Sold)
-    default:
-      return "#6674D7"; // Periwinkle Blue (Unavailable)
-  }
-}
-
-// Building Block Generator Handle Icons
-function getBuildingMoveAnchorIcon() {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="104" height="26" viewBox="0 0 104 26">
-    <defs>
-      <filter id="b-mv-sh" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000000" flood-opacity="0.6"/>
-      </filter>
-    </defs>
-    <rect x="2" y="2" width="100" height="22" rx="11" fill="#0f172a" stroke="#00E5FF" stroke-width="1.8" filter="url(#b-mv-sh)"/>
-    <g transform="translate(14, 13)" stroke="#00E5FF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <path d="M-4 0 L4 0 M0 -4 L0 4"/>
-      <path d="M-2 -1.5 L-4 0 L-2 1.5"/>
-      <path d="M2 -1.5 L4 0 L2 1.5"/>
-      <path d="M-1.5 -2 L0 -4 L1.5 -2"/>
-      <path d="M-1.5 2 L0 4 L1.5 2"/>
-    </g>
-    <text x="27" y="16.5" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="700" letter-spacing="0.4">MOVE BLOCK</text>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(104, 26),
-    anchor: new window.google.maps.Point(52, 13),
-  };
-}
-
-function getBuildingLengthHandleIcon(lengthMeters = 26.5) {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const text = `${Number(lengthMeters).toFixed(1)}m`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="86" height="26" viewBox="0 0 86 26">
-    <defs>
-      <filter id="b-len-sh" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000000" flood-opacity="0.55"/>
-      </filter>
-    </defs>
-    <rect x="2" y="2" width="82" height="22" rx="11" fill="#064e3b" stroke="#10b981" stroke-width="1.8" filter="url(#b-len-sh)"/>
-    <g transform="translate(14, 13)" stroke="#34d399" stroke-width="1.6" stroke-linecap="round" fill="none">
-      <path d="M-4.5 0 L4.5 0"/>
-      <path d="M-2.5 -2 L-4.5 0 L-2.5 2"/>
-      <path d="M2.5 -2 L4.5 0 L2.5 2"/>
-    </g>
-    <text x="26" y="16.5" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="700">${text}</text>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(86, 26),
-    anchor: new window.google.maps.Point(43, 13),
-  };
-}
-
-function getBuildingWidthHandleIcon(widthMeters = 2.8) {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const text = `${Number(widthMeters).toFixed(1)}m`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="82" height="26" viewBox="0 0 82 26">
-    <defs>
-      <filter id="b-wid-sh" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000000" flood-opacity="0.55"/>
-      </filter>
-    </defs>
-    <rect x="2" y="2" width="78" height="22" rx="11" fill="#3b0764" stroke="#a855f7" stroke-width="1.8" filter="url(#b-wid-sh)"/>
-    <g transform="translate(13, 13)" stroke="#c084fc" stroke-width="1.6" stroke-linecap="round" fill="none">
-      <path d="M0 -4.5 L0 4.5"/>
-      <path d="M-2 -2.5 L0 -4.5 L2 -2.5"/>
-      <path d="M-2 2.5 L0 4.5 L2 2.5"/>
-    </g>
-    <text x="25" y="16.5" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="700">${text}</text>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(82, 26),
-    anchor: new window.google.maps.Point(41, 13),
-  };
-}
-
-function getBuildingRotateHandleIcon(angleDeg = 37.7) {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const text = `${Number(angleDeg).toFixed(1)}°`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="84" height="26" viewBox="0 0 84 26">
-    <defs>
-      <filter id="b-rot-sh" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000000" flood-opacity="0.55"/>
-      </filter>
-    </defs>
-    <rect x="2" y="2" width="80" height="22" rx="11" fill="#78350f" stroke="#f59e0b" stroke-width="1.8" filter="url(#b-rot-sh)"/>
-    <g transform="translate(13, 13)">
-      <path d="M-3 -1.5 A 4 4 0 1 1 -3 2.5" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round"/>
-      <polygon points="-4.5,-2 -0.5,-1.5 -2,-5" fill="#fbbf24"/>
-    </g>
-    <text x="25" y="16.5" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="700">${text}</text>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(84, 26),
-    anchor: new window.google.maps.Point(42, 13),
-  };
-}
-
-function getBuildingApplyHandleIcon() {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="112" height="26" viewBox="0 0 112 26">
-    <defs>
-      <filter id="b-app-sh" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000000" flood-opacity="0.55"/>
-      </filter>
-    </defs>
-    <rect x="2" y="2" width="108" height="22" rx="11" fill="#064e3b" stroke="#10b981" stroke-width="1.8" filter="url(#b-app-sh)"/>
-    <g transform="translate(14, 13)" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <path d="M-4 0 L-1 3.5 L5 -3"/>
-    </g>
-    <text x="27" y="16.5" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700" letter-spacing="0.3">APPLY &amp; SAVE</text>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(112, 26),
-    anchor: new window.google.maps.Point(56, 13),
-  };
-}
-
-
-function getBlockTitleBadgeIcon(title, angleDeg = 37.7) {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const cleanTitle = (title || "").replace("ROW-", "Row ");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="32" viewBox="0 0 120 32">
-    <g transform="rotate(${-angleDeg}, 60, 16)">
-      <rect x="4" y="4" width="112" height="24" rx="12" fill="rgba(15, 23, 42, 0.88)" stroke="#ffffff" stroke-width="1.5"/>
-      <text x="60" y="20" text-anchor="middle" fill="#ffffff" font-family="Georgia, serif" font-size="11.5" font-weight="700">${cleanTitle}</text>
-    </g>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(120, 32),
-    anchor: new window.google.maps.Point(60, 16),
-  };
-}
-
-/**
- * Extracts deceased names for a plot (returns empty array if none).
- */
-export function getPlotDeceasedNames(plot) {
-  if (!plot) return [];
-
-  // Occupants are always derived from the plot's grave records — never
-  // hardcoded — so a plot number alone can never fabricate personal data.
-
-  // 1. Check if grave details notes has apartment niche stack JSON with occupied tiers
-  const grave = plot.graves?.[0];
-  if (grave?.details?.notes) {
-    try {
-      const parsed = JSON.parse(grave.details.notes);
-      if (Array.isArray(parsed.tiers)) {
-        const occupied = parsed.tiers
-          .filter((t) => t.deceasedName && t.status === "occupied")
-          .map((t) => t.deceasedName.trim());
-        if (occupied.length > 0) {
-          return occupied;
-        }
-      }
-    } catch {
-      // not JSON, continue
-    }
-  }
-
-  // 2. Check if multiple graves are attached to plot
-  if (Array.isArray(plot.graves) && plot.graves.length > 1) {
-    const names = plot.graves
-      .map((g) => g.deceasedName?.trim())
-      .filter(Boolean);
-    if (names.length > 0) return names;
-  }
-
-  // 3. Check primary grave deceasedName string for separators like ' & ', ' / ', ' and '
-  const rawName = (grave?.deceasedName || "").trim();
-  if (rawName) {
-    if (rawName.includes(" & ")) {
-      return rawName.split(/\s*&\s*/).filter(Boolean);
-    }
-    if (rawName.includes(" / ")) {
-      return rawName.split(/\s*\/\s*/).filter(Boolean);
-    }
-    if (rawName.toLowerCase().includes(" and ")) {
-      return rawName.split(/\s+and\s+/i).filter(Boolean);
-    }
-    return [rawName];
-  }
-
-  return [];
-}
-
-/**
- * Extracts deceased names for a plot callout on the map.
- * Falls back to plot number if no occupants exist.
- */
-export function getPlotCalloutNames(plot) {
-  const names = getPlotDeceasedNames(plot);
-  if (names.length > 0) return names;
-  return [plot?.plotNumber ? `Plot ${plot.plotNumber}` : "Plot Details"];
-}
 
 const WRAPPER_STYLE = {
   position: "relative",
@@ -258,250 +73,6 @@ const BASE_OPTIONS = {
   maxZoom: 24,
 };
 
-// Compute rotated rectangular footprint for a plot cell
-function getPlotCorners({
-  lat,
-  lng,
-  widthMeters = 2.65,
-  depthMeters = 1.6,
-  angleDeg = 37.7,
-}) {
-  const mToLat = 1 / 110574;
-  const mToLng = 1 / (111320 * Math.cos((lat * Math.PI) / 180));
-  const rad = (angleDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-
-  const hw = widthMeters / 2;
-  const hd = depthMeters / 2;
-
-  const corners = [
-    { dx: -hw, dy: -hd },
-    { dx: hw, dy: -hd },
-    { dx: hw, dy: hd },
-    { dx: -hw, dy: hd },
-  ];
-
-  return corners.map(({ dx, dy }) => ({
-    lat: lat + (dx * sin + dy * cos) * mToLat,
-    lng: lng + (dx * cos - dy * sin) * mToLng,
-  }));
-}
-
-// Blue teardrop map pin for selected plot
-const BLUE_PIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
-  <defs>
-    <filter id="pinShadow" x="-20%" y="-10%" width="140%" height="130%">
-      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="rgba(0,0,0,0.35)"/>
-    </filter>
-  </defs>
-  <path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22c0-7.7-6.3-14-14-14z" fill="#0284c7" stroke="#ffffff" stroke-width="2" filter="url(#pinShadow)"/>
-  <circle cx="14" cy="13" r="4.5" fill="#ffffff"/>
-</svg>`;
-const BLUE_PIN_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(BLUE_PIN_SVG)}`;
-
-/**
- * Generates an SVG data URL for in-plot text labels, rotated to match the
- * plot angle. Vacant cells show just the cell number; occupied cells show
- * numbered deceased names ("1. Jane Peters") like the reference plot map.
- * Returns { url, width, height } so the caller can anchor the icon precisely.
- */
-export function createPlotLabelIcon({
-  plotNumber,
-  deceasedNames = [],
-  angleDeg = 37.7,
-  hasStar = false,
-  showName = false,
-}) {
-  let cellNumber = plotNumber;
-  const colMatch = plotNumber?.match(/(?:-C0*|^Plot\s*|^0*)(\d+)$/i);
-  if (colMatch) {
-    cellNumber = colMatch[1];
-  } else if (plotNumber === "WALAG-001") {
-    cellNumber = "1";
-  }
-
-  const escapeXml = (str) =>
-    (str || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&apos;");
-
-  const truncate = (str, max = 16) => {
-    const s = (str || "").trim();
-    return s.length > max ? s.slice(0, max - 1) + "…" : s;
-  };
-
-  const SERIF = "Georgia, 'Times New Roman', Times, serif";
-  const names = showName
-    ? deceasedNames.map((n) => truncate(n)).filter(Boolean).slice(0, 2)
-    : [];
-
-  const width = names.length > 0 ? 120 : 48;
-  const lineHeight = 13;
-  const lineCount = Math.max(1, names.length);
-  const height = names.length > 0 ? lineCount * lineHeight + 8 : 24;
-  const cx = width / 2;
-  const cy = height / 2;
-
-  let textSvg = "";
-  if (names.length === 0) {
-    // Vacant cell or number-only mode: clean centered cell number
-    textSvg = `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-family="${SERIF}" font-style="italic" font-size="11.5" font-weight="700" fill="#111827" stroke="#ffffff" stroke-width="2.4" paint-order="stroke fill">${escapeXml(cellNumber)}</text>`;
-  } else {
-    const firstY = cy - ((lineCount - 1) * lineHeight) / 2 + 4;
-    const starTspan = hasStar ? `<tspan fill="#D97706">&#9733; </tspan>` : "";
-    textSvg += `<text x="${cx}" y="${firstY}" text-anchor="middle" font-family="${SERIF}" font-style="italic" font-size="10.5" font-weight="700" fill="#111827" stroke="#ffffff" stroke-width="2.2" paint-order="stroke fill">${starTspan}${escapeXml(cellNumber)}. ${escapeXml(names[0])}</text>`;
-    for (let i = 1; i < names.length; i++) {
-      textSvg += `<text x="${cx}" y="${firstY + i * lineHeight}" text-anchor="middle" font-family="${SERIF}" font-style="italic" font-size="10" font-weight="600" fill="#111827" stroke="#ffffff" stroke-width="2.2" paint-order="stroke fill">${escapeXml(names[i])}</text>`;
-    }
-  }
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><g transform="rotate(${-angleDeg}, ${cx}, ${cy})">${textSvg}</g></svg>`;
-
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    width,
-    height,
-  };
-}
-
-// Fallback circle marker for zoomed out view / edit mode
-function circleSymbol(color, selected) {
-  return {
-    path: window.google?.maps?.SymbolPath?.CIRCLE ?? 0,
-    fillColor: color,
-    fillOpacity: 0.95,
-    strokeColor: selected ? "#00E5FF" : "#ffffff",
-    strokeWeight: selected ? 3 : 1.5,
-    scale: selected ? 8 : 6,
-  };
-}
-
-function draftSymbol() {
-  return {
-    path: window.google?.maps?.SymbolPath?.BACKWARD_CLOSED_ARROW ?? 3,
-    fillColor: "#2D6CDF",
-    fillOpacity: 1,
-    strokeColor: "#111111",
-    strokeWeight: 2,
-    scale: 6,
-  };
-}
-
-// Formal CAD-style Move Anchor badge for Adjust Mode
-function getMoveAnchorIcon() {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="32" viewBox="0 0 96 32">
-    <defs>
-      <filter id="m-sh" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.6"/>
-      </filter>
-    </defs>
-    <rect x="2" y="2" width="92" height="28" rx="14" fill="#0f172a" stroke="#00E5FF" stroke-width="2" filter="url(#m-sh)"/>
-    <g transform="translate(18, 16)" stroke="#00E5FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <path d="M-6 0 L6 0 M0 -6 L0 6"/>
-      <path d="M-4 -2.5 L-6.5 0 L-4 2.5"/>
-      <path d="M4 -2.5 L6.5 0 L4 2.5"/>
-      <path d="M-2.5 -4 L0 -6.5 L2.5 -4"/>
-      <path d="M-2.5 4 L0 6.5 L2.5 4"/>
-    </g>
-    <text x="35" y="20" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5">MOVE</text>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(96, 32),
-    anchor: new window.google.maps.Point(48, 16),
-  };
-}
-
-// Formal CAD-style Rotate Handle badge for Adjust Mode
-function getRotateHandleIcon() {
-  if (typeof window === "undefined" || typeof window.google?.maps?.Size !== "function") return undefined;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="104" height="32" viewBox="0 0 104 32">
-    <defs>
-      <filter id="r-sh" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.6"/>
-      </filter>
-    </defs>
-    <rect x="2" y="2" width="100" height="28" rx="14" fill="#0f172a" stroke="#A855F7" stroke-width="2" filter="url(#r-sh)"/>
-    <g transform="translate(18, 16)">
-      <path d="M-5 -2 A 6 6 0 1 1 -5 4" fill="none" stroke="#C084FC" stroke-width="2" stroke-linecap="round"/>
-      <polygon points="-7,-4 -1,-2 -4,-8" fill="#C084FC"/>
-    </g>
-    <text x="35" y="20" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5">ROTATE</text>
-  </svg>`;
-  return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new window.google.maps.Size(104, 32),
-    anchor: new window.google.maps.Point(52, 16),
-  };
-}
-
-// Helper to check if a plot belongs to City Memorial Park (CMP)
-export function isCmpPlot(p) {
-  if (!p || p._deleted) return false;
-  return Boolean(
-    p.plotNumber?.startsWith("ROW-") ||
-    p.plotNumber === "WALAG-001" ||
-    p.locationDetail?.subsection?.startsWith("ROW-") ||
-    p.locationDetail?.locationId === 4
-  );
-}
-
-// Relative boundary vertices in meters [dx = East, dy = North] from the center of CMP apartment crypts
-// Encloses the 15 concrete apartment rows, the Walag niche, and admin boundary
-export const CMP_BOUNDARY_OFFSETS_METERS = [
-  { dx: -49.9, dy: 48.0 },  // NW corner (driveway curve)
-  { dx: 57.6,  dy: 40.9 },  // NE corner (along admin road to Bolonsiri Rd)
-  { dx: 45.8,  dy: -0.3 },  // Mid East (along Bolonsiri Rd)
-  { dx: 22.4,  dy: -35.5 }, // SE corner (past Row E07)
-  { dx: -31.4, dy: -35.5 }, // South Mid (above Mendez Store)
-  { dx: -56.6, dy: -10.4 }, // SW corner (below Walag niche)
-  { dx: -49.9, dy: 29.9 },  // West Mid (along curved access road)
-];
-
-export function getCmpBoundaryCoords(
-  centerLat = 8.46584789,
-  centerLng = 124.65701478,
-  angle = 37.7,
-  offsets = CMP_BOUNDARY_OFFSETS_METERS
-) {
-  const rad = (((angle ?? 37.7) - 37.7) * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const latScale = 110574;
-  const lngScale = 111320 * Math.cos((centerLat * Math.PI) / 180);
-  const activeOffsets = offsets && offsets.length >= 3 ? offsets : CMP_BOUNDARY_OFFSETS_METERS;
-
-  return activeOffsets.map(({ dx, dy }) => {
-    const rx = dx * cos - dy * sin;
-    const ry = dx * sin + dy * cos;
-    return {
-      lat: Number((centerLat + ry / latScale).toFixed(8)),
-      lng: Number((centerLng + rx / lngScale).toFixed(8)),
-    };
-  });
-}
-
-export function coordsToBoundaryOffsets(coords, centerLat, centerLng, angle = 37.7) {
-  const latScale = 110574;
-  const lngScale = 111320 * Math.cos((centerLat * Math.PI) / 180);
-  const rad = (((angle ?? 37.7) - 37.7) * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-
-  return coords.map(({ lat, lng }) => {
-    const ry = (lat - centerLat) * latScale;
-    const rx = (lng - centerLng) * lngScale;
-    const dx = rx * cos + ry * sin;
-    const dy = -rx * sin + ry * cos;
-    return { dx: Number(dx.toFixed(2)), dy: Number(dy.toFixed(2)) };
-  });
-}
-
 function GoogleMapLoadedView({
   apiKey,
   plots = [],
@@ -521,14 +92,15 @@ function GoogleMapLoadedView({
   selectedScope = "all",
   onSelectScope,
   onUpdatePlots,
-  gridAngle = 37.7,
+  gridAngle = DEFAULT_GRID_ANGLE_DEG,
   onChangeGridAngle,
   onSinglePlotDrag,
   onLandmarkDragEnd,
-  boundaryOffsets = CMP_BOUNDARY_OFFSETS_METERS,
+  boundaryOffsets = null,
   onUpdateBoundaryOffsets,
   editBoundaryLines = false,
   buildingConfig = null,
+  buildingToolOpen = false,
   onUpdateBuildingConfig,
   onApplyBuildingConfig,
 }) {
@@ -563,20 +135,15 @@ function GoogleMapLoadedView({
 
   const effectiveFilter = statusFilter !== "all" ? statusFilter : activeFilter;
 
+  // The building generator (handles, Apply & Save) is live only while its
+  // adjuster tab is open, so a stray click on a building outline never pops it.
+  const buildingActive = Boolean(buildingConfig?.active) && buildingToolOpen;
+
   // Scope filter for adjust / crop mode
   const scopeFilter = useCallback(
     (p) => {
-      const isCmp =
-        p.plotNumber?.startsWith("ROW-") ||
-        p.plotNumber === "WALAG-001" ||
-        p.locationDetail?.subsection?.startsWith("ROW-");
-      if (!isCmp) return false;
-
-      if (selectedScope === "all") return true;
-      if (selectedScope === "east") return p.plotNumber?.startsWith("ROW-E");
-      if (selectedScope === "west") return p.plotNumber?.startsWith("ROW-W") || p.plotNumber === "WALAG-001";
-      if (selectedScope === "walag") return p.plotNumber === "WALAG-001" || p.plotNumber?.startsWith("ROW-W07");
-      return p.plotNumber?.startsWith(selectedScope) || (selectedScope === "ROW-W07" && p.plotNumber === "WALAG-001");
+      if (!isBuildingPlot(p)) return false;
+      return selectedScope === "all" || belongsToBuilding(p, selectedScope);
     },
     [selectedScope]
   );
@@ -658,7 +225,7 @@ function GoogleMapLoadedView({
     const map = new Map();
     for (const p of plots) {
       if (!p.gpsLat || !p.gpsLng || p._deleted) continue;
-      const r = getRowKey(p);
+      const r = getBuildingKey(p);
       if (r) {
         if (!map.has(r)) map.set(r, []);
         map.get(r).push(p);
@@ -669,17 +236,15 @@ function GoogleMapLoadedView({
 
   const allBuildingBlocks = useMemo(() => {
     const blocks = [];
-    const rowKeys = Array.from(rowPlotMap.keys()).sort();
+    const rowKeys = Array.from(rowPlotMap.keys()).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true })
+    );
 
     for (const r of rowKeys) {
-      const rowPlots = rowPlotMap.get(r).slice().sort((a, b) => {
-        if (a.plotNumber === "WALAG-001") return -1;
-        if (b.plotNumber === "WALAG-001") return 1;
-        return (a.plotNumber || "").localeCompare(b.plotNumber || "", undefined, { numeric: true });
-      });
+      const rowPlots = rowPlotMap.get(r).slice().sort(compareByColumn);
 
       const isTargetActive = Boolean(
-        buildingConfig?.active &&
+        buildingActive &&
         buildingConfig.targetRow === r
       );
 
@@ -696,7 +261,7 @@ function GoogleMapLoadedView({
           invertCols: buildingConfig.invertCols,
         };
       } else {
-        const snapped = snapBuildingToPlots(rowPlots, gridAngle ?? 37.7);
+        const snapped = snapBuildingToPlots(rowPlots, gridAngle ?? DEFAULT_GRID_ANGLE_DEG);
         if (!snapped) continue;
         cfg = {
           centerLat: snapped.centerLat,
@@ -728,7 +293,7 @@ function GoogleMapLoadedView({
     }
 
     // Custom freeform block support if active
-    if (buildingConfig?.active && buildingConfig.targetRow === "custom") {
+    if (buildingActive && buildingConfig.targetRow === "custom") {
       const corners = getBuildingCorners(buildingConfig);
       const cells = getSubdividedBuildingCells({
         ...buildingConfig,
@@ -745,11 +310,11 @@ function GoogleMapLoadedView({
     }
 
     return blocks;
-  }, [rowPlotMap, buildingConfig, gridAngle]);
+  }, [rowPlotMap, buildingConfig, buildingActive, gridAngle]);
 
   // Edge anchor points on the building perimeter
   const buildingTopEdgePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       0,
       buildingConfig.widthMeters / 2,
@@ -757,10 +322,10 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   const buildingBottomEdgePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       0,
       -buildingConfig.widthMeters / 2,
@@ -768,10 +333,10 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   const buildingRightEdgePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       buildingConfig.lengthMeters / 2,
       0,
@@ -779,11 +344,11 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   // Extended handle positions (cleanly separated in 4 cardinal directions)
   const buildingRotateHandlePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       0,
       buildingConfig.widthMeters / 2 + 7.5,
@@ -791,10 +356,10 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   const buildingWidthHandlePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       0,
       -(buildingConfig.widthMeters / 2 + 4.5),
@@ -802,10 +367,10 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   const buildingLengthHandlePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       buildingConfig.lengthMeters / 2 + 4.5,
       0,
@@ -813,10 +378,10 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   const buildingLeftEdgePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       -buildingConfig.lengthMeters / 2,
       0,
@@ -824,10 +389,10 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   const buildingApplyHandlePos = useMemo(() => {
-    if (!buildingConfig?.active) return null;
+    if (!buildingActive) return null;
     return localOffsetToLatLng(
       -(buildingConfig.lengthMeters / 2 + 5.0),
       0,
@@ -835,7 +400,7 @@ function GoogleMapLoadedView({
       buildingConfig.centerLng,
       buildingConfig.angleDeg
     );
-  }, [buildingConfig]);
+  }, [buildingConfig, buildingActive]);
 
   const handleBuildingAnchorDrag = useCallback(
     (e) => {
@@ -1012,30 +577,29 @@ function GoogleMapLoadedView({
     [placingMode, mapTypeId]
   );
 
-  // CMP Apartment plots
-  const cmpPlots = useMemo(() => {
-    return plots.filter((p) => p.gpsLat && p.gpsLng && isCmpPlot(p));
-  }, [plots]);
+  // Centre of the building plots (the configured map centre when there are none).
+  const buildingsCenter = useMemo(
+    () => getBuildingsCenter(plots) ?? { lat: center.lat, lng: center.lng },
+    [plots, center.lat, center.lng]
+  );
 
-  // Center of CMP apartment complex
-  const cmpCenter = useMemo(() => {
-    if (cmpPlots.length === 0) return { lat: 8.46584789, lng: 124.65701478 };
-    let sumLat = 0;
-    let sumLng = 0;
-    for (const p of cmpPlots) {
-      sumLat += Number(p.gpsLat);
-      sumLng += Number(p.gpsLng);
-    }
-    return {
-      lat: sumLat / cmpPlots.length,
-      lng: sumLng / cmpPlots.length,
-    };
-  }, [cmpPlots]);
+  // Saved boundary offsets, else a padded rectangle derived from the buildings.
+  const effectiveBoundaryOffsets = useMemo(() => {
+    if (Array.isArray(boundaryOffsets) && boundaryOffsets.length >= 3) return boundaryOffsets;
+    return deriveBoundaryOffsets(plots, gridAngle ?? DEFAULT_GRID_ANGLE_DEG);
+  }, [boundaryOffsets, plots, gridAngle]);
 
-  // Dynamic boundary coordinates that move & rotate in lockstep with the plots
-  const boundaryPaths = useMemo(() => {
-    return getCmpBoundaryCoords(cmpCenter.lat, cmpCenter.lng, gridAngle ?? 37.7, boundaryOffsets);
-  }, [cmpCenter.lat, cmpCenter.lng, gridAngle, boundaryOffsets]);
+  // Boundary coordinates that move & rotate in lockstep with the plots
+  const boundaryPaths = useMemo(
+    () =>
+      getBoundaryCoords(
+        buildingsCenter.lat,
+        buildingsCenter.lng,
+        gridAngle ?? DEFAULT_GRID_ANGLE_DEG,
+        effectiveBoundaryOffsets
+      ),
+    [buildingsCenter.lat, buildingsCenter.lng, gridAngle, effectiveBoundaryOffsets]
+  );
 
   const polygonRef = useRef(null);
 
@@ -1049,10 +613,15 @@ function GoogleMapLoadedView({
       const pt = path.getAt(i);
       newCoords.push({ lat: pt.lat(), lng: pt.lng() });
     }
-    const newOffsets = coordsToBoundaryOffsets(newCoords, cmpCenter.lat, cmpCenter.lng, gridAngle ?? 37.7);
+    const newOffsets = coordsToBoundaryOffsets(
+      newCoords,
+      buildingsCenter.lat,
+      buildingsCenter.lng,
+      gridAngle ?? DEFAULT_GRID_ANGLE_DEG
+    );
 
     // Guard against recursive state update loops: only update if offsets actually changed significantly (> 5cm)
-    const currentOffsets = Array.isArray(boundaryOffsets) && boundaryOffsets.length >= 3 ? boundaryOffsets : CMP_BOUNDARY_OFFSETS_METERS;
+    const currentOffsets = effectiveBoundaryOffsets || [];
     const hasMeaningfulChange =
       newOffsets.length !== currentOffsets.length ||
       newOffsets.some((o, idx) => {
@@ -1062,7 +631,7 @@ function GoogleMapLoadedView({
 
     if (!hasMeaningfulChange) return;
     onUpdateBoundaryOffsets(newOffsets);
-  }, [cmpCenter.lat, cmpCenter.lng, gridAngle, onUpdateBoundaryOffsets, editBoundaryLines, boundaryOffsets]);
+  }, [buildingsCenter.lat, buildingsCenter.lng, gridAngle, onUpdateBoundaryOffsets, editBoundaryLines, effectiveBoundaryOffsets]);
 
   const handlePolygonLoad = useCallback((poly) => {
     polygonRef.current = poly;
@@ -1089,7 +658,7 @@ function GoogleMapLoadedView({
 
   // Dragging the blue boundary polygon directly also moves the plots inside it
   const handlePolygonDragEnd = useCallback(() => {
-    if (!polygonRef.current || !onUpdatePlots) return;
+    if (!polygonRef.current || !onUpdatePlots || boundaryPaths.length === 0) return;
     const path = polygonRef.current.getPath();
     if (!path || path.getLength() === 0) return;
     let newSumLat = 0;
@@ -1120,12 +689,11 @@ function GoogleMapLoadedView({
     }
   }, [boundaryPaths, plots, scopeFilter, onUpdatePlots]);
 
-  // Filter plots according to selected legend status — CMP plots only
+  // Filter pinned plots according to the selected legend status
   const visiblePlots = useMemo(() => {
     return plots.filter((p) => {
       if (p._deleted) return false;
       if (!p.gpsLat || !p.gpsLng) return false;
-      if (!isCmpPlot(p)) return false;
       if (effectiveFilter === "all") return true;
       return p.status?.toLowerCase() === effectiveFilter.toLowerCase();
     });
@@ -1133,7 +701,7 @@ function GoogleMapLoadedView({
 
   // Plots that do not belong to an apartment row building (standalone plots)
   const standalonePlots = useMemo(() => {
-    return visiblePlots.filter((p) => !getRowKey(p));
+    return visiblePlots.filter((p) => !getBuildingKey(p));
   }, [visiblePlots]);
 
   if (loadError && !isGoogleAlreadyLoaded) {
@@ -1570,6 +1138,7 @@ function GoogleMapLoadedView({
         )}
 
         {/* Cemetery Section Boundary Polygon (Blue outline — customizable length/size by lines) */}
+        {boundaryPaths.length >= 3 && (
         <PolygonF
           paths={boundaryPaths}
           editable={editBoundaryLines}
@@ -1589,10 +1158,10 @@ function GoogleMapLoadedView({
             zIndex: 10,
           }}
         />
-
+        )}
 
         {/* ─── Adjust / Crop Tool: Center Move Anchor & Rotation Handle ─── */}
-        {adjustMode && !buildingConfig?.active && adjustBbox && (
+        {adjustMode && !buildingActive && adjustBbox && (
           <>
             {/* Top stem line connecting bounding box to rotation handle */}
             <PolylineF
@@ -1653,7 +1222,7 @@ function GoogleMapLoadedView({
           </>
         )}
 
-        {/* ─── Building Type Blocks (All 15 Rows in Bolonsori CMP) ─── */}
+        {/* ─── Building blocks (one per row / building) ─── */}
         {allBuildingBlocks.map((block) => {
           const isTargetActive = block.isTargetActive;
           return (
@@ -1671,8 +1240,8 @@ function GoogleMapLoadedView({
                   cursor: adjustMode ? "pointer" : "default",
                 }}
                 onClick={() => {
-                  if (adjustMode && onUpdateBuildingConfig && !isTargetActive && block.plots.length > 0) {
-                    const snapped = snapBuildingToPlots(block.plots, gridAngle ?? 37.7);
+                  if (adjustMode && buildingToolOpen && onUpdateBuildingConfig && !isTargetActive && block.plots.length > 0) {
+                    const snapped = snapBuildingToPlots(block.plots, gridAngle ?? DEFAULT_GRID_ANGLE_DEG);
                     if (snapped) {
                       onUpdateBuildingConfig((prev) => ({
                         ...prev,
@@ -1721,12 +1290,12 @@ function GoogleMapLoadedView({
                       onClick={() => {
                         if (
                           adjustMode &&
-                          buildingConfig?.active &&
+                          buildingActive &&
                           onUpdateBuildingConfig &&
                           !isTargetActive &&
                           block.plots.length > 0
                         ) {
-                          const snapped = snapBuildingToPlots(block.plots, gridAngle ?? 37.7);
+                          const snapped = snapBuildingToPlots(block.plots, gridAngle ?? DEFAULT_GRID_ANGLE_DEG);
                           if (snapped) {
                             onUpdateBuildingConfig((prev) => ({
                               ...prev,
@@ -1756,12 +1325,9 @@ function GoogleMapLoadedView({
                           mapsReady
                             ? {
                                 url: createPlotLabelIcon({
-                                  plotNumber: cell.label,
-                                  deceasedNames: cell.plot ? getPlotDeceasedNames(cell.plot) : [],
+                                  plotNumber: columnShortLabel(cell.label),
+                                  deceasedNames: cell.plot ? getPlotOccupantNames(cell.plot) : [],
                                   angleDeg: block.cfg.angleDeg,
-                                  hasStar:
-                                    cell.plot?.plotNumber === "WALAG-001" ||
-                                    cell.plot?.plotNumber === "ROW-E01-C01",
                                   showName: false,
                                 }).url,
                                 anchor: new window.google.maps.Point(24, 12),
@@ -1792,7 +1358,7 @@ function GoogleMapLoadedView({
                     )}
 
                     {/* Pinpoint Drag Handle: ONLY in Plot Coordinates adjust tab (NOT when buildingConfig is active) */}
-                    {adjustMode && !buildingConfig?.active && cell.plot && scopeFilter(cell.plot) && (
+                    {adjustMode && !buildingActive && cell.plot && scopeFilter(cell.plot) && (
                       <MarkerF
                         position={cell.center}
                         draggable
@@ -1835,7 +1401,7 @@ function GoogleMapLoadedView({
         })}
 
         {/* ─── Interactive Handles for Currently Active Building Block ─── */}
-        {buildingConfig?.active && (
+        {buildingActive && (
           <>
             {/* Rotate Stem Line & Joint (North Edge) */}
             {buildingTopEdgePos && buildingRotateHandlePos && (
@@ -2098,7 +1664,7 @@ function GoogleMapLoadedView({
               )}
 
               {/* Pinpoint Drag Handle for standalone plot in adjustMode */}
-              {adjustMode && !buildingConfig?.active && scopeFilter(plot) && (
+              {adjustMode && !buildingActive && scopeFilter(plot) && (
                 <MarkerF
                   position={pos}
                   draggable
@@ -2125,7 +1691,7 @@ function GoogleMapLoadedView({
 
         {/* Selected Plot Callout Bubble on Map */}
         {selectedPlot?.gpsLat && selectedPlot?.gpsLng && !adjustMode && (() => {
-          const calloutNames = getPlotCalloutNames(selectedPlot);
+          const calloutNames = getPlotSummaryNames(selectedPlot);
           return (
             <InfoWindowF
               position={{ lat: Number(selectedPlot.gpsLat), lng: Number(selectedPlot.gpsLng) }}

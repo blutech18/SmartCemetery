@@ -73,9 +73,9 @@ export function ClientDashboard({ userName }) {
         description="Search burial records, locate graves on map, and manage requests."
         actions={
           <>
-            <Button variant="secondary" href="/dashboard/map?locate=bolonsiri">
+            <Button variant="secondary" href="/dashboard/map?locate=cemetery">
               <Compass size={16} />
-              Locate Bolonsiri Map
+              Locate Cemetery Map
             </Button>
             <Button variant="primary" href="/dashboard/search">
               <Search size={16} />
@@ -85,7 +85,7 @@ export function ClientDashboard({ userName }) {
         }
       />
 
-      {/* Locate Bolonsiri Banner for New Logins */}
+      {/* Locate Cemetery Banner for New Logins */}
       <div
         style={{
           background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)",
@@ -119,15 +119,15 @@ export function ClientDashboard({ userName }) {
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)" }}>
-              Locate Bolonsiri Cemetery on Interactive Map
+              Locate the Cemetery on the Interactive Map
             </div>
             <div style={{ fontSize: "0.825rem", color: "var(--text-secondary)" }}>
               Explore satellite views of cemetery grounds, search plots, and get pedestrian walking directions.
             </div>
           </div>
         </div>
-        <Button variant="primary" href="/dashboard/map?locate=bolonsiri" style={{ whiteSpace: "nowrap" }}>
-          <Compass size={16} /> Locate Bolonsiri
+        <Button variant="primary" href="/dashboard/map?locate=cemetery" style={{ whiteSpace: "nowrap" }}>
+          <Compass size={16} /> Locate Cemetery
         </Button>
       </div>
 

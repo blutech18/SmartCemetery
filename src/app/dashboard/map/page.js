@@ -10,8 +10,17 @@ import PlotDetailsDrawer from "../../../components/PlotDetailsDrawer";
 import PlotPositionAdjuster from "../../../components/PlotPositionAdjuster";
 import { getSubdividedBuildingCells, applyBuildingCellsToPlots } from "../../../lib/building-grid";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
-import { getClientMapCenter } from "../../../lib/config";
-import { CMP_BOUNDARY_OFFSETS_METERS } from "../../../components/CemeteryMap";
+import {
+  DEFAULT_BUILDING_LENGTH_M,
+  DEFAULT_BUILDING_WIDTH_M,
+  DEFAULT_GRID_ANGLE_DEG,
+  SITE_NAME,
+  getClientMapCenter,
+} from "../../../lib/config";
+import { plotsOfBuilding } from "@/lib/cemetery-layout";
+import { deriveBoundaryOffsets } from "@/lib/map-geometry";
+import { useHistoryStack } from "@/lib/use-history-stack";
+import { useBoundarySettings } from "@/lib/use-boundary-settings";
 
 const CemeteryMap = dynamic(() => import("../../../components/CemeteryMap"), {
   ssr: false,
@@ -66,48 +75,53 @@ function MapPageInner() {
   // Adjust / Crop transform mode (custom positioning)
   const [adjustMode, setAdjustMode] = useState(false);
   const [selectedScope, setSelectedScope] = useState("all");
-  const [gridAngle, setGridAngle] = useState(37.7);
+  // Which adjuster tab is open; the building generator is only live on "building".
+  const [adjusterTab, setAdjusterTab] = useState("plots");
+  const [gridAngle, setGridAngle] = useState(DEFAULT_GRID_ANGLE_DEG);
   const [savingBatch, setSavingBatch] = useState(false);
   const originalPlotsRef = useRef([]);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
-  const historyRef = useRef([]);
-  const historyIndexRef = useRef(0);
-  const lastHistoryTimeRef = useRef(0);
-  const boundarySaveTimerRef = useRef(null);
+  const {
+    canUndo,
+    canRedo,
+    push: pushHistorySnapshot,
+    reset: resetHistory,
+    clear: clearHistory,
+    undo: undoHistory,
+    redo: redoHistory,
+  } = useHistoryStack();
   const [toast, setToast] = useState("");
 
-  // Blue boundary area customization
-  const [boundaryOffsets, setBoundaryOffsets] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("cmp_custom_boundary_offsets");
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length >= 3) {
-            return parsed;
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return CMP_BOUNDARY_OFFSETS_METERS;
-  });
+  // Blue boundary area customization (shared, server-persisted polygon)
+  const {
+    boundaryOffsets,
+    updateBoundaryOffsets: handleUpdateBoundaryOffsets,
+    resetBoundary: handleResetBoundary,
+  } = useBoundarySettings({ notify: setToast });
+
+  // Saved boundary, else a padded rectangle derived from the building plots.
+  const effectiveBoundaryOffsets = useMemo(
+    () => boundaryOffsets ?? deriveBoundaryOffsets(plots, gridAngle),
+    [boundaryOffsets, plots, gridAngle]
+  );
   const [editBoundaryLines, setEditBoundaryLines] = useState(false);
 
   // Building Block / Row Generator Configuration
-  const [buildingConfig, setBuildingConfig] = useState({
-    active: false,
-    targetRow: "ROW-E02",
-    numCols: 10,
-    numRows: 1,
-    lengthMeters: 26.5,
-    widthMeters: 2.8,
-    angleDeg: 37.7,
-    centerLat: 8.4659864,
-    centerLng: 124.6569998,
-    invertCols: false,
+  // Starts at the configured map centre; the adjuster picks the target row
+  // from the buildings that actually exist (or "custom" for a new one).
+  const [buildingConfig, setBuildingConfig] = useState(() => {
+    const c = getClientMapCenter();
+    return {
+      active: false,
+      targetRow: null,
+      numCols: 10,
+      numRows: 1,
+      lengthMeters: DEFAULT_BUILDING_LENGTH_M,
+      widthMeters: DEFAULT_BUILDING_WIDTH_M,
+      angleDeg: DEFAULT_GRID_ANGLE_DEG,
+      centerLat: c.lat,
+      centerLng: c.lng,
+      invertCols: false,
+    };
   });
   const [confirmDeleteRow, setConfirmDeleteRow] = useState(null);
 
@@ -147,63 +161,6 @@ function MapPageInner() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isFullScreen]);
 
-  // Debounced persistence of the shared boundary polygon to the server. The
-  // edit controls are Admin-only, so non-Admin GET-only users never call this.
-  const scheduleBoundarySave = useCallback(
-    (offsets) => {
-      clearTimeout(boundarySaveTimerRef.current);
-      boundarySaveTimerRef.current = setTimeout(async () => {
-        try {
-          const res = await fetch("/api/settings/boundary", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ offsets }),
-          });
-          if (!res.ok && res.status !== 401 && res.status !== 403) {
-            setToast("Boundary could not be saved");
-          }
-        } catch {
-          setToast("Boundary could not be saved");
-        }
-      }, 800);
-    },
-    [setToast]
-  );
-
-  // Clear any pending boundary save when leaving the page.
-  useEffect(() => () => clearTimeout(boundarySaveTimerRef.current), []);
-
-  const handleUpdateBoundaryOffsets = useCallback(
-    (newOffsets) => {
-      setBoundaryOffsets((prev) => {
-        const isSame =
-          Array.isArray(prev) &&
-          Array.isArray(newOffsets) &&
-          prev.length === newOffsets.length &&
-          prev.every((o, i) => Math.abs(o.dx - newOffsets[i].dx) < 0.01 && Math.abs(o.dy - newOffsets[i].dy) < 0.01);
-        return isSame ? prev : newOffsets;
-      });
-      try {
-        localStorage.setItem("cmp_custom_boundary_offsets", JSON.stringify(newOffsets));
-      } catch {
-        // ignore — local cache only
-      }
-      scheduleBoundarySave(newOffsets);
-    },
-    [scheduleBoundarySave]
-  );
-
-  const handleResetBoundary = useCallback(() => {
-    setBoundaryOffsets(CMP_BOUNDARY_OFFSETS_METERS);
-    try {
-      localStorage.removeItem("cmp_custom_boundary_offsets");
-    } catch {
-      // ignore — local cache only
-    }
-    scheduleBoundarySave(CMP_BOUNDARY_OFFSETS_METERS);
-    setToast("Boundary lines reset to default");
-  }, [scheduleBoundarySave, setToast]);
-
   // Placement: setting one plot's location. `pending` is either an existing
   // plot object, or { isNew: true, plotNumber, locationDetailId } for a new one.
   const [pending, setPending] = useState(null);
@@ -236,20 +193,6 @@ function MapPageInner() {
       try {
         const res = await fetch("/api/locations");
         setLocations((await res.json()) || []);
-      } catch (err) {
-        console.error(err);
-      }
-    })();
-    // The boundary polygon is shared, server-persisted layout data. Fall back
-    // to the locally cached/default value until the server responds.
-    (async () => {
-      try {
-        const res = await fetch("/api/settings/boundary");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (Array.isArray(data?.offsets) && data.offsets.length >= 3) {
-          setBoundaryOffsets(data.offsets);
-        }
       } catch (err) {
         console.error(err);
       }
@@ -381,12 +324,12 @@ function MapPageInner() {
     };
   }, [searchParams, plots, isAdmin, startPlacing]);
 
-  const [bolonsiriFocus, setBolonsiriFocus] = useState(null);
+  const [cemeteryFocus, setCemeteryFocus] = useState(null);
 
-  const handleLocateBolonsiri = useCallback(() => {
+  const handleLocateCemetery = useCallback(() => {
     const c = getClientMapCenter();
-    setBolonsiriFocus({ lat: c.lat, lng: c.lng, key: Date.now() });
-    setToast("Centered on Bolonsiri Public Cemetery");
+    setCemeteryFocus({ lat: c.lat, lng: c.lng, key: Date.now() });
+    setToast(`Centered on ${SITE_NAME}`);
     setTimeout(() => {
       document.getElementById("cemetery-map-container")?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 100);
@@ -394,9 +337,10 @@ function MapPageInner() {
 
   const lastHandledLocateRef = useRef(false);
 
-  // Deep-link: /dashboard/map?locate=bolonsiri
+  // Deep-link: /dashboard/map?locate=cemetery ("bolonsiri" kept for old links)
   useEffect(() => {
-    if (searchParams.get("locate") !== "bolonsiri") {
+    const locate = searchParams.get("locate");
+    if (locate !== "cemetery" && locate !== "bolonsiri") {
       lastHandledLocateRef.current = false;
       return undefined;
     }
@@ -405,12 +349,12 @@ function MapPageInner() {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      handleLocateBolonsiri();
+      handleLocateCemetery();
     });
     return () => {
       cancelled = true;
     };
-  }, [searchParams, handleLocateBolonsiri]);
+  }, [searchParams, handleLocateCemetery]);
 
   function resetModes() {
     setPending(null);
@@ -451,68 +395,43 @@ function MapPageInner() {
     }
   }
 
-  const pushHistory = useCallback((newPlots, newAngle) => {
-    const nextAngle = newAngle ?? gridAngle;
-    const now = Date.now();
-    const isRapid = now - lastHistoryTimeRef.current < 300;
-    lastHistoryTimeRef.current = now;
+  const pushHistory = useCallback(
+    (newPlots, newAngle) => {
+      pushHistorySnapshot({
+        plots: JSON.parse(JSON.stringify(newPlots)),
+        gridAngle: newAngle ?? gridAngle,
+      });
+    },
+    [pushHistorySnapshot, gridAngle]
+  );
 
-    const currentIdx = historyIndexRef.current;
-    const snapshot = {
-      plots: JSON.parse(JSON.stringify(newPlots)),
-      gridAngle: nextAngle,
-    };
+  const handleUpdatePlotsWithHistory = useCallback(
+    (updatedPlots) => {
+      setPlots(updatedPlots);
+      pushHistory(updatedPlots, gridAngle);
+    },
+    [gridAngle, pushHistory]
+  );
 
-    if (isRapid && currentIdx > 0) {
-      historyRef.current[currentIdx] = snapshot;
-    } else {
-      const nextHistory = historyRef.current.slice(0, currentIdx + 1);
-      nextHistory.push(snapshot);
-      if (nextHistory.length > 50) nextHistory.shift();
-      historyRef.current = nextHistory;
-      historyIndexRef.current = nextHistory.length - 1;
-    }
-
-    setCanUndo(historyIndexRef.current > 0);
-    setCanRedo(false);
-  }, [gridAngle]);
-
-  const handleUpdatePlotsWithHistory = useCallback((updatedPlots) => {
-    setPlots(updatedPlots);
-    pushHistory(updatedPlots, gridAngle);
-  }, [gridAngle, pushHistory]);
+  const restoreSnapshot = useCallback((target) => {
+    if (!target) return;
+    setPlots(JSON.parse(JSON.stringify(target.plots)));
+    if (target.gridAngle != null) setGridAngle(target.gridAngle);
+  }, []);
 
   const handleUndo = useCallback(() => {
-    if (historyIndexRef.current <= 0) return;
-    const newIdx = historyIndexRef.current - 1;
-    historyIndexRef.current = newIdx;
-    const target = historyRef.current[newIdx];
-    if (target) {
-      setPlots(JSON.parse(JSON.stringify(target.plots)));
-      if (target.gridAngle != null) {
-        setGridAngle(target.gridAngle);
-      }
-    }
-    setCanUndo(newIdx > 0);
-    setCanRedo(true);
+    const target = undoHistory();
+    if (!target) return;
+    restoreSnapshot(target);
     setToast("Undo (Ctrl+Z)");
-  }, [setToast]);
+  }, [undoHistory, restoreSnapshot]);
 
   const handleRedo = useCallback(() => {
-    if (historyIndexRef.current >= historyRef.current.length - 1) return;
-    const newIdx = historyIndexRef.current + 1;
-    historyIndexRef.current = newIdx;
-    const target = historyRef.current[newIdx];
-    if (target) {
-      setPlots(JSON.parse(JSON.stringify(target.plots)));
-      if (target.gridAngle != null) {
-        setGridAngle(target.gridAngle);
-      }
-    }
-    setCanUndo(true);
-    setCanRedo(newIdx < historyRef.current.length - 1);
+    const target = redoHistory();
+    if (!target) return;
+    restoreSnapshot(target);
     setToast("Restore / Redo (Ctrl+Y)");
-  }, [setToast]);
+  }, [redoHistory, restoreSnapshot]);
 
   const handleCancelAdjust = useCallback(() => {
     if (originalPlotsRef.current && originalPlotsRef.current.length > 0) {
@@ -520,15 +439,12 @@ function MapPageInner() {
     } else {
       setPlots((prev) => prev.map((p) => (p._modified ? { ...p, _modified: false } : p)));
     }
-    historyRef.current = [];
-    historyIndexRef.current = 0;
-    setCanUndo(false);
-    setCanRedo(false);
+    clearHistory();
     setAdjustMode(false);
     setEditBoundaryLines(false);
     setBuildingConfig((prev) => ({ ...prev, active: false }));
     setToast("Editing cancelled. All changes discarded.");
-  }, [setToast]);
+  }, [setToast, clearHistory]);
 
   function toggleAdjustMode() {
     if (adjustMode) {
@@ -545,11 +461,7 @@ function MapPageInner() {
       setRouteCoords(null);
       const snapshot = JSON.parse(JSON.stringify(plots));
       originalPlotsRef.current = snapshot;
-      historyRef.current = [{ plots: snapshot, gridAngle: gridAngle ?? 37.7 }];
-      historyIndexRef.current = 0;
-      lastHistoryTimeRef.current = 0;
-      setCanUndo(false);
-      setCanRedo(false);
+      resetHistory({ plots: snapshot, gridAngle: gridAngle ?? DEFAULT_GRID_ANGLE_DEG });
       setAdjustMode(true);
       scrollToMap();
       setToast("Adjust mode: drag central anchor or use buttons to align grid");
@@ -606,6 +518,8 @@ function MapPageInner() {
               id: p.id || null,
               plotNumber: p.plotNumber,
               locationDetailId: p.locationDetailId || p.locationDetail?.id || null,
+              totalTiers: p.totalTiers ?? null,
+              buildingKey: p._buildingKey || p.locationDetail?.subsection || null,
               status: p.status || "available",
               gpsLat: p.gpsLat != null ? Number(p.gpsLat) : null,
               gpsLng: p.gpsLng != null ? Number(p.gpsLng) : null,
@@ -643,10 +557,7 @@ function MapPageInner() {
 
           setPlots(savedPlots);
           originalPlotsRef.current = JSON.parse(JSON.stringify(savedPlots));
-          historyRef.current = [{ plots: savedPlots, gridAngle }];
-          historyIndexRef.current = 0;
-          setCanUndo(false);
-          setCanRedo(false);
+          resetHistory({ plots: savedPlots, gridAngle });
 
           let toastMsg = `Successfully saved ${data.updatedCount || modified.length} plot positions!`;
           if (data.deletedCount > 0) {
@@ -674,7 +585,7 @@ function MapPageInner() {
         setSavingBatch(false);
       }
     },
-    [plots, gridAngle, setToast, setError]
+    [plots, gridAngle, setToast, setError, resetHistory]
   );
 
   const handlePresetSuccess = useCallback(
@@ -682,12 +593,9 @@ function MapPageInner() {
       if (Array.isArray(freshPlots) && freshPlots.length > 0) {
         setPlots(freshPlots);
         originalPlotsRef.current = JSON.parse(JSON.stringify(freshPlots));
-        historyRef.current = [{ plots: freshPlots, gridAngle }];
-        historyIndexRef.current = 0;
-        setCanUndo(false);
-        setCanRedo(false);
+        resetHistory({ plots: freshPlots, gridAngle });
       }
-      setToast("Bolonsiri Master Preset saved to database! 119 plots loaded.");
+      setToast(`Layout preset saved to database! ${Array.isArray(freshPlots) ? freshPlots.length : 0} plots loaded.`);
       try {
         const res = await fetch("/api/locations");
         if (res.ok) {
@@ -697,24 +605,13 @@ function MapPageInner() {
         console.error(e);
       }
     },
-    [gridAngle, setToast]
+    [gridAngle, setToast, resetHistory]
   );
 
   const handleApplyAndSaveBuildingConfig = useCallback(
     async (cfg = buildingConfig) => {
       if (!cfg) return;
-      const targetPlots = plots
-        .filter(
-          (p) =>
-            !p._deleted &&
-            (p.plotNumber?.startsWith(cfg.targetRow) ||
-              (cfg.targetRow === "ROW-W07" && p.plotNumber === "WALAG-001"))
-        )
-        .sort((a, b) => {
-          if (a.plotNumber === "WALAG-001") return -1;
-          if (b.plotNumber === "WALAG-001") return 1;
-          return (a.plotNumber || "").localeCompare(b.plotNumber || "", undefined, { numeric: true });
-        });
+      const targetPlots = plotsOfBuilding(plots, cfg.targetRow);
 
       if (targetPlots.length === 0) {
         setToast(`No plots found for row ${cfg.targetRow}`);
@@ -767,9 +664,9 @@ function MapPageInner() {
       return sectionPoint(ldId);
     }
     if (activeDetailsPlot && hasGps(activeDetailsPlot)) return { lat: Number(activeDetailsPlot.gpsLat), lng: Number(activeDetailsPlot.gpsLng) };
-    if (bolonsiriFocus) return { lat: bolonsiriFocus.lat, lng: bolonsiriFocus.lng };
+    if (cemeteryFocus) return { lat: cemeteryFocus.lat, lng: cemeteryFocus.lng };
     return null;
-  }, [pending, activeDetailsPlot, bolonsiriFocus, sectionPoint]);
+  }, [pending, activeDetailsPlot, cemeteryFocus, sectionPoint]);
 
   function handleMapClick(lat, lng) {
     if (!pending) return;
@@ -867,10 +764,10 @@ function MapPageInner() {
           <button
             type="button"
             className="btn btn-secondary flex items-center gap-xs"
-            onClick={handleLocateBolonsiri}
-            title="Recenter map on Bolonsiri Public Cemetery"
+            onClick={handleLocateCemetery}
+            title={`Recenter map on ${SITE_NAME}`}
           >
-            <Compass size={16} /> Locate Bolonsiri
+            <Compass size={16} /> Locate Cemetery
           </button>
 
           {isAdmin && (
@@ -1054,13 +951,15 @@ function MapPageInner() {
             setGridAngle(nextAngle);
             pushHistory(plots, nextAngle);
           }}
-          boundaryOffsets={boundaryOffsets}
+          boundaryOffsets={effectiveBoundaryOffsets}
           onUpdateBoundaryOffsets={handleUpdateBoundaryOffsets}
           editBoundaryLines={editBoundaryLines}
           onToggleEditBoundaryLines={() => setEditBoundaryLines((prev) => !prev)}
           onResetBoundary={handleResetBoundary}
           buildingConfig={buildingConfig}
           onUpdateBuildingConfig={setBuildingConfig}
+          activeTab={adjusterTab}
+          onTabChange={setAdjusterTab}
           confirmDeleteRow={confirmDeleteRow}
           onConfirmDeleteRow={setConfirmDeleteRow}
         />
@@ -1095,10 +994,11 @@ function MapPageInner() {
             pushHistory(plots, nextAngle);
           }}
           onSinglePlotDrag={handleSinglePlotDrag}
-          boundaryOffsets={boundaryOffsets}
+          boundaryOffsets={effectiveBoundaryOffsets}
           onUpdateBoundaryOffsets={handleUpdateBoundaryOffsets}
           editBoundaryLines={editBoundaryLines}
           buildingConfig={buildingConfig}
+          buildingToolOpen={adjusterTab === "building"}
           onUpdateBuildingConfig={setBuildingConfig}
           onApplyBuildingConfig={handleApplyAndSaveBuildingConfig}
         />

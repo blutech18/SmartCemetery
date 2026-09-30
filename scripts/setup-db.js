@@ -6,7 +6,8 @@
  * It will, in order:
  *   1. Create the database (if missing) and apply every Prisma migration.
  *   2. Generate the Prisma client.
- *   3. Seed baseline data (users, locations, plots, sample graves).
+ *   3. Seed users; on a local database also sample data and the layout preset
+ *      (see SEED_DEMO_DATA / SEED_LAYOUT_PRESET).
  *
  * Any value already present in your `.env` / `.env.local` is respected. The
  * defaults below only fill in what is missing so the command works on a fresh
@@ -37,9 +38,47 @@ const DEV_DEFAULTS = {
   SEED_CLIENT_PASSWORD: "Password123!",
 };
 
+// Secrets and well-known passwords are only ever defaulted for a LOCAL database.
+// Pointing this script at any other host must use explicitly configured values.
+const isLocalDb = (() => {
+  try {
+    const host = new URL(process.env.DATABASE_URL || DEV_DEFAULTS.DATABASE_URL).hostname;
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(host);
+  } catch {
+    return false;
+  }
+})();
+const SECRET_KEYS = new Set([
+  "NEXTAUTH_SECRET",
+  "ENCRYPTION_KEY",
+  "SEED_ADMIN_PASSWORD",
+  "SEED_STAFF_PASSWORD",
+  "SEED_CLIENT_PASSWORD",
+]);
+const missingSecrets = [];
+
 for (const [key, value] of Object.entries(DEV_DEFAULTS)) {
   if (!process.env[key] || process.env[key].trim() === "") {
+    if (!isLocalDb && SECRET_KEYS.has(key)) {
+      missingSecrets.push(key);
+      continue;
+    }
     process.env[key] = value;
+  }
+}
+
+if (missingSecrets.length > 0) {
+  console.error(
+    `✖ DATABASE_URL does not point at a local database, so development defaults are not used.\n  Set these explicitly first: ${missingSecrets.join(", ")}`
+  );
+  process.exit(1);
+}
+
+// Sample data (invented people, plots, requests) is a local-development
+// convenience. Elsewhere it must be requested explicitly.
+if (isLocalDb) {
+  for (const key of ["SEED_DEMO_DATA", "SEED_LAYOUT_PRESET"]) {
+    if (!process.env[key]) process.env[key] = "yes";
   }
 }
 

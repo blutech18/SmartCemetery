@@ -10,11 +10,12 @@ import {
 } from "@/lib/encryption";
 import { shouldArchive } from "@/lib/archival";
 import { getClientIp, writeAuditLog } from "@/lib/audit";
+import { MAX_TIERS } from "@/lib/cemetery-layout";
 
 const UPDATE_GRAVE_SCHEMA = {
   deceasedName: { type: "string", trim: true, min: 1, max: 200 },
   plotId: { type: "integer", min: 1 },
-  tier: { type: "integer", min: 1, max: 4 },
+  tier: { type: "integer", min: 1, max: MAX_TIERS },
 };
 const DETAIL_LIMITS = {
   causeOfDeath: 5000,
@@ -23,8 +24,10 @@ const DETAIL_LIMITS = {
   notes: 10000,
 };
 const CORE_FIELDS = ["deceasedName", "plotId", "burialDate", "tier"];
+// Life dates are plain columns; editing them does not reset verification.
+const DATE_FIELDS = ["birthDate", "deathDate"];
 const DETAIL_FIELDS = Object.keys(DETAIL_LIMITS);
-const ALLOWED_FIELDS = [...CORE_FIELDS, ...DETAIL_FIELDS];
+const ALLOWED_FIELDS = [...CORE_FIELDS, ...DATE_FIELDS, ...DETAIL_FIELDS];
 
 class TransactionConflict extends Error {
   constructor(status, message, extra = {}) {
@@ -78,6 +81,17 @@ function validatePatch(body) {
     }
   }
 
+  const lifeDates = {};
+  for (const field of DATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(body, field)) continue;
+    const parsed = dateValue(body[field]);
+    if (parsed.error) {
+      errors.push({ field, code: "type", message: `${field} must be a valid date or null` });
+    } else {
+      lifeDates[field] = parsed.value;
+    }
+  }
+
   const details = {};
   for (const field of DETAIL_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(body, field)) continue;
@@ -98,6 +112,7 @@ function validatePatch(body) {
     value: {
       ...(core.valid ? core.value : {}),
       ...(Object.prototype.hasOwnProperty.call(body, "burialDate") ? { burialDate } : {}),
+      ...lifeDates,
     },
     details,
     detailTouched: DETAIL_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(body, field)),
@@ -148,6 +163,17 @@ export async function PATCH(request, { params }) {
       const nextTier = validation.value.tier ?? existing.tier ?? 1;
       const movingPlots = nextPlotId !== undefined && nextPlotId !== existing.plotId;
       const changingTier = validation.value.tier !== undefined && nextTier !== existing.tier;
+
+      // The destination tier must exist in the destination plot.
+      if (movingPlots || changingTier) {
+        const destination = await tx.plot.findUnique({
+          where: { id: movingPlots ? nextPlotId : existing.plotId },
+          select: { totalTiers: true },
+        });
+        if (destination && Number.isFinite(destination.totalTiers) && nextTier > destination.totalTiers) {
+          return { error: "tier_invalid", tier: nextTier, totalTiers: destination.totalTiers };
+        }
+      }
 
       if (movingPlots) {
         // For multi-tier plots, check that the specific tier is free
@@ -236,7 +262,12 @@ export async function PATCH(request, { params }) {
       const updated = await tx.grave.findUnique({
         where: { id: graveId },
         include: {
-          plot: { include: { locationDetail: { include: { location: true } } } },
+          plot: {
+            include: {
+              locationDetail: { include: { location: true } },
+              photos: { select: { tier: true, url: true } },
+            },
+          },
           details: true,
         },
       });
@@ -248,6 +279,9 @@ export async function PATCH(request, { params }) {
     if (result.error === "plot_not_found") return errorResponse(404, "Plot not found");
     if (result.error === "plot_unavailable") {
       return errorResponse(409, `Plot is currently ${result.plotStatus}`);
+    }
+    if (result.error === "tier_invalid") {
+      return errorResponse(400, `Tier ${result.tier} does not exist: this plot has ${result.totalTiers} tier(s)`);
     }
     if (result.error === "tier_occupied") {
       return errorResponse(409, `Tier ${result.tier} is already occupied for this plot`);

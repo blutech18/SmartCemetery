@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsClient } from "@/lib/use-is-client";
+import { SITE_NAME } from "@/lib/config";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 const STAFF_NAV_ITEMS = [
@@ -285,7 +286,7 @@ export default function DashboardHeader() {
           {(role === "Staff" || role === "Client") && (
             <>
               <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem", letterSpacing: "-0.01em" }}>
-                Bolonsori Public Cemetery
+                {SITE_NAME}
               </span>
               <span style={{ color: "var(--text-muted)", opacity: 0.5 }}>/</span>
             </>

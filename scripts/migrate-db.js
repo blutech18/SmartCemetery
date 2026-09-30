@@ -5,9 +5,11 @@
  * Ensures:
  * 1. Environment variables from .env and .env.local are properly loaded.
  * 2. Target MySQL database exists (creates it if missing).
- * 3. All Prisma migrations are applied in sequence (including app_settings).
+ * 3. All Prisma migrations are applied in sequence.
  * 4. The Prisma Client is generated and synchronized with latest schema.
- * 5. Default boundary polygon setting exists in app_settings.
+ *
+ * It never writes site data: there is no default boundary or layout. The map
+ * derives a boundary from the plots until an Admin saves one.
  */
 const { loadEnvConfig } = require("@next/env");
 const { spawnSync } = require("node:child_process");
@@ -16,16 +18,16 @@ loadEnvConfig(process.cwd());
 
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 
-// Local development fallback if DATABASE_URL is not defined
 if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === "") {
-  process.env.DATABASE_URL = "mysql://root@127.0.0.1:3306/cemetery_map";
+  console.error("✖ DATABASE_URL is not set. Add it to .env / .env.local (see .env.example).");
+  process.exit(1);
 }
 
 const dbName = (() => {
   try {
     return new URL(process.env.DATABASE_URL).pathname.replace(/^\//, "");
   } catch {
-    return "cemetery_map";
+    return "(invalid DATABASE_URL)";
   }
 })();
 
@@ -59,7 +61,7 @@ async function main() {
   await ensureDatabaseExists();
 
   // 2. Deploy Prisma migrations
-  console.log("\n▶ [1/3] Deploying database migrations...");
+  console.log("\n▶ [1/2] Deploying database migrations...");
   const migrateRes = spawnSync(npx, ["prisma", "migrate", "deploy"], {
     stdio: "inherit",
     env: process.env,
@@ -72,7 +74,7 @@ async function main() {
   }
 
   // 3. Generate Prisma Client
-  console.log("\n▶ [2/3] Synchronizing Prisma client...");
+  console.log("\n▶ [2/2] Synchronizing Prisma client...");
   const genRes = spawnSync(npx, ["prisma", "generate"], {
     stdio: "inherit",
     env: process.env,
@@ -88,43 +90,8 @@ async function main() {
     console.log("✓ Prisma client synchronized successfully");
   }
 
-  // 4. Synchronize default boundary setting if missing
-  console.log("\n▶ [3/3] Synchronizing default settings...");
-  try {
-    const { PrismaClient } = require("@prisma/client");
-    const prisma = new PrismaClient();
-    const existingBoundary = await prisma.appSetting.findUnique({
-      where: { key: "cmp_boundary_offsets" },
-    });
-
-    if (!existingBoundary) {
-      const defaultOffsets = [
-        { dx: -49.9, dy: 48.0 },
-        { dx: 57.6, dy: 40.9 },
-        { dx: 45.8, dy: -0.3 },
-        { dx: 40.4, dy: -29.2 },
-        { dx: 31.4, dy: -60.0 },
-        { dx: 13.9, dy: -61.2 },
-        { dx: -24.8, dy: -55.9 },
-        { dx: -55.8, dy: -20.6 },
-      ];
-      await prisma.appSetting.create({
-        data: {
-          key: "cmp_boundary_offsets",
-          value: JSON.stringify(defaultOffsets),
-        },
-      });
-      console.log("✓ Default cemetery boundary polygon saved to app_settings");
-    } else {
-      console.log("✓ Existing app_settings preserved");
-    }
-    await prisma.$disconnect();
-  } catch (err) {
-    console.warn("Note: app_settings check completed:", err.message);
-  }
-
   console.log("\n✅ Database is fully migrated, synchronized, and up to date!");
-  console.log("Your localdev database is ready.\n");
+  console.log("Your database is ready.\n");
 }
 
 main().catch((err) => {

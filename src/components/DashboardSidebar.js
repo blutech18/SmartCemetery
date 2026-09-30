@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { SITE_NAME } from "@/lib/config";
 import {
   LayoutDashboard, Archive, MapPin, Map, ClipboardList, Users, MessageSquare,
   LineChart, Search, Menu, X, Bell, Megaphone, BarChart3, BadgeCheck,
@@ -187,7 +188,7 @@ export default function DashboardSidebar() {
         aria-label="Dashboard navigation"
       >
         <div className="sidebar-brand">
-          <div className="sidebar-brand-text">Bolonsori Public Cemetery</div>
+          <div className="sidebar-brand-text">{SITE_NAME}</div>
         </div>
 
         <nav className="sidebar-nav">

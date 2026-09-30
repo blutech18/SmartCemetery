@@ -1,7 +1,153 @@
 {
   "name": "Bolonsiri Concrete Apartments (Current Localdev Design)",
   "description": "Exact plot layout and crypt positions aligned with drone/satellite concrete foundations.",
-  "totalPlots": 119,
+  "location": {
+    "name": "City Memorial Park (CMP) - Bolonsiri",
+    "matchName": "City Memorial Park",
+    "description": "Public cemetery redevelopment area featuring multi-tier apartment crypts, administrative offices, and memorial rows in Camaman-an, Cagayan de Oro.",
+    "gpsLat": 8.46571,
+    "gpsLng": 124.657
+  },
+  "tiersPerPlot": 4,
+  "deletedRows": [
+    "ROW-W01",
+    "ROW-W02",
+    "ROW-W04"
+  ],
+  "rowConfigs": {
+    "ROW-E01": {
+      "targetRow": "ROW-E01",
+      "numCols": 9,
+      "numRows": 1,
+      "centerLat": 8.46604176,
+      "centerLng": 124.65691851,
+      "lengthMeters": 23.8,
+      "widthMeters": 2.8,
+      "angleDeg": 30.7,
+      "invertCols": false
+    },
+    "ROW-E02": {
+      "targetRow": "ROW-E02",
+      "numCols": 12,
+      "numRows": 1,
+      "centerLat": 8.46598772,
+      "centerLng": 124.65701322,
+      "lengthMeters": 35,
+      "widthMeters": 2.8,
+      "angleDeg": 32.2,
+      "invertCols": false
+    },
+    "ROW-E03": {
+      "targetRow": "ROW-E03",
+      "numCols": 15,
+      "numRows": 1,
+      "centerLat": 8.46592904,
+      "centerLng": 124.65709441,
+      "lengthMeters": 46.3,
+      "widthMeters": 2.8,
+      "angleDeg": 31.8,
+      "invertCols": false
+    },
+    "ROW-E04": {
+      "targetRow": "ROW-E04",
+      "numCols": 12,
+      "numRows": 1,
+      "centerLat": 8.46595015,
+      "centerLng": 124.65730788,
+      "lengthMeters": 28.8,
+      "widthMeters": 2.8,
+      "angleDeg": 30.4,
+      "invertCols": false
+    },
+    "ROW-E05": {
+      "targetRow": "ROW-E05",
+      "numCols": 12,
+      "numRows": 1,
+      "centerLat": 8.46587802,
+      "centerLng": 124.65738086,
+      "lengthMeters": 33.5,
+      "widthMeters": 2.8,
+      "angleDeg": 29.5,
+      "invertCols": false
+    },
+    "ROW-E06": {
+      "targetRow": "ROW-E06",
+      "numCols": 8,
+      "numRows": 1,
+      "centerLat": 8.46579771,
+      "centerLng": 124.6570588,
+      "lengthMeters": 21.2,
+      "widthMeters": 2.8,
+      "angleDeg": 31.9,
+      "invertCols": false
+    },
+    "ROW-E07": {
+      "targetRow": "ROW-E07",
+      "numCols": 9,
+      "numRows": 1,
+      "centerLat": 8.46572245,
+      "centerLng": 124.6571064,
+      "lengthMeters": 24.3,
+      "widthMeters": 2.8,
+      "angleDeg": 32.1,
+      "invertCols": false
+    },
+    "ROW-W03": {
+      "targetRow": "ROW-W03",
+      "numCols": 9,
+      "numRows": 1,
+      "centerLat": 8.46549931,
+      "centerLng": 124.65692294,
+      "lengthMeters": 25.5,
+      "widthMeters": 2.8,
+      "angleDeg": 31,
+      "invertCols": false
+    },
+    "ROW-W05": {
+      "targetRow": "ROW-W05",
+      "numCols": 8,
+      "numRows": 1,
+      "centerLat": 8.46564061,
+      "centerLng": 124.65715176,
+      "lengthMeters": 23.1,
+      "widthMeters": 2.8,
+      "angleDeg": 31.4,
+      "invertCols": false
+    },
+    "ROW-W06": {
+      "targetRow": "ROW-W06",
+      "numCols": 8,
+      "numRows": 1,
+      "centerLat": 8.46572832,
+      "centerLng": 124.65677791,
+      "lengthMeters": 22.8,
+      "widthMeters": 2.8,
+      "angleDeg": 33,
+      "invertCols": false
+    },
+    "ROW-W07": {
+      "targetRow": "ROW-W07",
+      "numCols": 8,
+      "numRows": 1,
+      "centerLat": 8.46565727,
+      "centerLng": 124.65682613,
+      "lengthMeters": 22.8,
+      "widthMeters": 2.8,
+      "angleDeg": 32.6,
+      "invertCols": false
+    },
+    "ROW-W08": {
+      "targetRow": "ROW-W08",
+      "numCols": 9,
+      "numRows": 1,
+      "centerLat": 8.46557751,
+      "centerLng": 124.65687181,
+      "lengthMeters": 25.1,
+      "widthMeters": 2.8,
+      "angleDeg": 32.1,
+      "invertCols": false
+    }
+  },
   "rows": {
     "ROW-E01": {
       "rowKey": "ROW-E01",

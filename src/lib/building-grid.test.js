@@ -6,7 +6,6 @@ import {
   getSubdividedBuildingCells,
   snapBuildingToPlots,
   applyBuildingCellsToPlots,
-  getRowKey,
 } from "./building-grid";
 
 describe("building-grid utility", () => {
@@ -147,13 +146,41 @@ describe("building-grid utility", () => {
     expect(p999.gpsLat).toBe(8.1);
   });
 
-  it("extracts row keys correctly for apartment rows and Walag crypts", () => {
-    expect(getRowKey({ plotNumber: "ROW-E01-C05" })).toBe("ROW-E01");
-    expect(getRowKey({ plotNumber: "ROW-W04-C02" })).toBe("ROW-W04");
-    expect(getRowKey({ plotNumber: "WALAG-001" })).toBe("ROW-W07");
-    expect(getRowKey({ locationDetail: { subsection: "ROW-E03" } })).toBe("ROW-E03");
-    expect(getRowKey({ plotNumber: "SEC-A-001" })).toBeNull();
-    expect(getRowKey(null)).toBeNull();
+  it("gives generated plots their building's tier count and key so they are saved as building plots", () => {
+    const existing = [
+      { id: 1, plotNumber: "ROW-E03-C01", locationDetailId: 18, totalTiers: 4, locationDetail: { subsection: "ROW-E03" } },
+    ];
+    const cells = getSubdividedBuildingCells({
+      centerLat: 8.4658,
+      centerLng: 124.657,
+      lengthMeters: 6,
+      widthMeters: 3,
+      angleDeg: 37.7,
+      numCols: 2,
+      targetPlots: existing,
+      targetRow: "ROW-E03",
+    });
+    const fresh = cells[1].plot;
+    expect(fresh.isNew).toBe(true);
+    expect(fresh.plotNumber).toBe("ROW-E03-C02");
+    expect(fresh.totalTiers).toBeGreaterThan(1);
+    expect(fresh._buildingKey).toBe("ROW-E03");
+    expect(fresh.locationDetailId).toBe(18);
+  });
+
+  it("derives the row name of a brand-new row from its plots, not from a fixed prefix list", () => {
+    const cells = getSubdividedBuildingCells({
+      centerLat: 8.4658,
+      centerLng: 124.657,
+      lengthMeters: 4,
+      widthMeters: 3,
+      angleDeg: 0,
+      numCols: 1,
+      targetPlots: [{ id: 5, plotNumber: "Crypt Block 2-C01" }],
+      targetRow: "custom",
+    });
+    expect(cells[0].label).toBe("Crypt Block 2-C01");
+    expect(cells[0].plot.id).toBe(5);
   });
 
   it("detects and preserves rotated angles for building rows", () => {
@@ -180,8 +207,8 @@ describe("building-grid utility", () => {
 
   it("continues the count and appends new plots when column count exceeds existing plots", () => {
     const existingPlots = [
-      { id: 201, plotNumber: "ROW-E03-C01", locationDetailId: 18, gpsLat: 8.46, gpsLng: 124.65 },
-      { id: 202, plotNumber: "ROW-E03-C02", locationDetailId: 18, gpsLat: 8.46, gpsLng: 124.65 },
+      { id: 201, plotNumber: "ROW-E03-C01", locationDetailId: 18, totalTiers: 4, locationDetail: { subsection: "ROW-E03" }, gpsLat: 8.46, gpsLng: 124.65 },
+      { id: 202, plotNumber: "ROW-E03-C02", locationDetailId: 18, totalTiers: 4, locationDetail: { subsection: "ROW-E03" }, gpsLat: 8.46, gpsLng: 124.65 },
     ];
 
     // Request 4 columns when only 2 exist
@@ -217,11 +244,11 @@ describe("building-grid utility", () => {
 
   it("marks excess plots without graves as _deleted and unpins excess plots with graves when columns are reduced", () => {
     const existingPlots = [
-      { id: 201, plotNumber: "ROW-E03-C01", locationDetailId: 18, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
-      { id: 202, plotNumber: "ROW-E03-C02", locationDetailId: 18, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
-      { id: 203, plotNumber: "ROW-E03-C03", locationDetailId: 18, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
-      { id: 204, plotNumber: "ROW-E03-C04", locationDetailId: 18, gpsLat: 8.46, gpsLng: 124.65, graves: [{ id: 99, deceasedName: "Jane Doe" }] },
-      { id: 301, plotNumber: "ROW-E04-C01", locationDetailId: 19, gpsLat: 8.461, gpsLng: 124.651, graves: [] },
+      { id: 201, plotNumber: "ROW-E03-C01", locationDetailId: 18, totalTiers: 4, locationDetail: { subsection: "ROW-E03" }, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
+      { id: 202, plotNumber: "ROW-E03-C02", locationDetailId: 18, totalTiers: 4, locationDetail: { subsection: "ROW-E03" }, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
+      { id: 203, plotNumber: "ROW-E03-C03", locationDetailId: 18, totalTiers: 4, locationDetail: { subsection: "ROW-E03" }, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
+      { id: 204, plotNumber: "ROW-E03-C04", locationDetailId: 18, totalTiers: 4, locationDetail: { subsection: "ROW-E03" }, gpsLat: 8.46, gpsLng: 124.65, graves: [{ id: 99, deceasedName: "Jane Doe" }] },
+      { id: 301, plotNumber: "ROW-E04-C01", locationDetailId: 19, totalTiers: 4, locationDetail: { subsection: "ROW-E04" }, gpsLat: 8.461, gpsLng: 124.651, graves: [] },
     ];
 
     // Reduce ROW-E03 from 4 columns to 2 columns
@@ -270,10 +297,10 @@ describe("building-grid utility", () => {
 
   it("deletes an entire building when cells is empty", () => {
     const existingPlots = [
-      { id: 101, plotNumber: "ROW-W01-C01", locationDetailId: 10, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
-      { id: 102, plotNumber: "ROW-W01-C02", locationDetailId: 10, gpsLat: 8.46, gpsLng: 124.65, graves: [{ id: 1 }] },
-      { id: 103, plotNumber: "ROW-W01-C03", locationDetailId: 10, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
-      { id: 104, plotNumber: "ROW-W02-C01", locationDetailId: 11, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
+      { id: 101, plotNumber: "ROW-W01-C01", locationDetailId: 10, totalTiers: 4, locationDetail: { subsection: "ROW-W01" }, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
+      { id: 102, plotNumber: "ROW-W01-C02", locationDetailId: 10, totalTiers: 4, locationDetail: { subsection: "ROW-W01" }, gpsLat: 8.46, gpsLng: 124.65, graves: [{ id: 1 }] },
+      { id: 103, plotNumber: "ROW-W01-C03", locationDetailId: 10, totalTiers: 4, locationDetail: { subsection: "ROW-W01" }, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
+      { id: 104, plotNumber: "ROW-W02-C01", locationDetailId: 11, totalTiers: 4, locationDetail: { subsection: "ROW-W02" }, gpsLat: 8.46, gpsLng: 124.65, graves: [] },
     ];
 
     // Delete entire ROW-W01

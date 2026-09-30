@@ -88,6 +88,9 @@ model Plot {
   locationDetailId Int      @map("location_detail_id")
   plotNumber       String   @map("plot_number") @db.VarChar(30)
   status           String   @default("available") @db.VarChar(20)
+  // Number of burial tiers/niches in this plot (1 for a ground lot, 4 for an
+  // apartment crypt stack). Tier occupants are the plot's Grave rows.
+  totalTiers       Int      @default(1) @map("total_tiers")
   gpsLat           Decimal? @map("gps_lat") @db.Decimal(10, 8)
   gpsLng           Decimal? @map("gps_lng") @db.Decimal(11, 8)
   createdAt        DateTime @default(now()) @map("created_at")
@@ -95,6 +98,7 @@ model Plot {
 
   locationDetail LocationDetail @relation(fields: [locationDetailId], references: [id], onDelete: Restrict)
   graves         Grave[]
+  photos         PlotPhoto[]
   navigations    Navigation[]
 
   @@unique([locationDetailId, plotNumber])
@@ -106,6 +110,8 @@ model Grave {
   plotId             Int       @map("plot_id")
   tier               Int       @default(1)
   deceasedName       String    @map("deceased_name") @db.VarChar(200)
+  birthDate          DateTime? @map("birth_date")
+  deathDate          DateTime? @map("death_date")
   burialDate         DateTime? @map("burial_date")
   status             String    @default("active") @db.VarChar(20)
   archivedAt         DateTime? @map("archived_at")
@@ -126,12 +132,29 @@ model Grave {
   @@map("graves")
 }
 
+// Photo of a plot or one of its tiers. `tier` 0 is the plot-wide photo;
+// 1..N is a specific tier. One photo per (plot, tier).
+model PlotPhoto {
+  id        Int      @id @default(autoincrement())
+  plotId    Int      @map("plot_id")
+  tier      Int      @default(0)
+  url       String   @db.VarChar(2048)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  plot Plot @relation(fields: [plotId], references: [id], onDelete: Cascade)
+
+  @@unique([plotId, tier])
+  @@map("plot_photos")
+}
+
 model GraveDetail {
   id                   Int      @id @default(autoincrement())
   graveId              Int      @unique @map("grave_id")
   causeOfDeath         String?  @map("cause_of_death") @db.Text
   contactPerson        String?  @map("contact_person") @db.Text
   contactPhone         String?  @map("contact_phone") @db.Text
+  // Free-text remarks only (encrypted). Structured data lives in real columns.
   notes                String?  @db.Text
   encryptionKeyVersion String   @default("v1") @map("encryption_key_version") @db.VarChar(40)
   notesEncrypted       Boolean  @default(false) @map("notes_encrypted")

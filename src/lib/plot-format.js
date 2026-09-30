@@ -1,9 +1,7 @@
 /**
- * Pure plot / grave presentation helpers.
- *
- * These were previously defined inside `PlotDetailsDrawer.js`, which made them
- * impossible to unit test and coupled presentation logic to a 1k-line client
- * component. They take plain data and return plain data — no React, no I/O.
+ * Pure plot / grave presentation helpers: plain data in, plain data out — no
+ * React, no I/O. Tier/photo data comes from real columns (Plot.totalTiers,
+ * Grave.tier/birthDate/deathDate, PlotPhoto), never from parsed notes.
  */
 
 /** Two-letter initials for a name, or "?" when empty. */
@@ -50,227 +48,90 @@ export function formatPlotDate(dateStr) {
   }
 }
 
+const TIER_LABELS = ["Ground Level", "Second Level", "Third Level"];
+
+/** Display label for tier `n` of a stack with `total` tiers. */
+export function tierLabel(n, total) {
+  if (total <= 1) return "Ground Burial Lot";
+  const name = n === total ? "Top Level" : TIER_LABELS[n - 1] || `Level ${n}`;
+  return `Tier ${n} (${name})`;
+}
+
+/** Number of tiers a plot displays: its column, at least the highest grave tier. */
+function plotTierCount(plot) {
+  const fromGraves = (plot.graves || []).reduce((m, g) => Math.max(m, Number(g.tier) || 1), 1);
+  return Math.max(Number(plot.totalTiers) || 1, fromGraves);
+}
+
+/** Photo URL for one tier (falls back to the plot-wide photo), or null. */
+function photoForTier(photos, tier) {
+  if (!Array.isArray(photos)) return null;
+  return (
+    photos.find((p) => p.tier === tier)?.url ||
+    photos.find((p) => p.tier === 0)?.url ||
+    null
+  );
+}
+
+/** Plot-wide photo (tier 0), or null. */
+export function getPlotPhoto(plot) {
+  return plot?.photos?.find((p) => p.tier === 0)?.url || null;
+}
+
 /**
- * Extract (or synthesize) the tier stack shown for a plot.
- *
- * Order of precedence:
- *  1. An explicit apartment-niche stack encoded in the grave's encrypted
- *     `details.notes` JSON (`type: "apartment_niche_stack"`).
- *  2. Multiple grave records attached to the plot.
- *  3. A row / apartment-section plot -> 4 synthetic tiers.
- *  4. A single traditional plot -> one ground-burial tier.
- *
- * Occupants always come from the plot's own grave records; nothing is
- * hardcoded, so a plot number alone can never fabricate personal data.
+ * Build the tier stack shown for a plot from its real rows: `plot.totalTiers`,
+ * the plot's Grave records (one per tier) and its PlotPhoto rows. Occupants
+ * always come from the plot's own grave records — nothing is hardcoded — so a
+ * plot number alone can never fabricate personal data.
  */
 export function extractPlotTiers(plot) {
   if (!plot) return [];
 
-  // 1. Explicit tier data from apartment_niche_stack notes JSON.
-  const grave = plot.graves?.[0];
-  if (grave?.details?.notes) {
-    try {
-      const parsed = JSON.parse(grave.details.notes);
-      if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
-        // Overlay any real DB grave records by tier onto the parsed tier stack
-        const dbGravesByTier = new Map();
-        for (const g of plot.graves || []) {
-          if (g.tier != null) dbGravesByTier.set(Number(g.tier), g);
-        }
+  const total = plotTierCount(plot);
+  const byTier = new Map();
+  for (const g of plot.graves || []) byTier.set(Number(g.tier) || 1, g);
 
-        return parsed.tiers.map((t) => {
-          const tierNum = Number(t.tier) || 1;
-          const dbGrave = dbGravesByTier.get(tierNum);
-          if (dbGrave) {
-            let birthDate = t.birthDate || t.dateOfBirth || null;
-            let deathDate = t.deathDate || t.dateOfDeath || null;
-            let notesText = t.notes || null;
-            if (dbGrave.details?.notes) {
-              try {
-                const sub = JSON.parse(dbGrave.details.notes);
-                if (sub.type !== "apartment_niche_stack") {
-                  birthDate = sub.birthDate || sub.dateOfBirth || birthDate;
-                  deathDate = sub.deathDate || sub.dateOfDeath || deathDate;
-                  notesText = sub.text || sub.notes || notesText;
-                }
-              } catch {
-                notesText = dbGrave.details.notes;
-              }
-            }
-            return {
-              ...t,
-              id: dbGrave.id,
-              deceasedName: dbGrave.deceasedName,
-              burialDate: dbGrave.burialDate ?? t.burialDate,
-              status: dbGrave.status === "active" ? "occupied" : (dbGrave.status || "occupied"),
-              birthDate,
-              deathDate,
-              photo: getGravePhoto(dbGrave) || t.photo || null,
-              notes: notesText,
-              causeOfDeath: dbGrave.details?.causeOfDeath || t.causeOfDeath,
-              contactPerson: dbGrave.details?.contactPerson || t.contactPerson,
-            };
-          }
-          return {
-            ...t,
-            birthDate: t.birthDate || t.dateOfBirth || parsed.birthDate || parsed.dateOfBirth || null,
-            deathDate: t.deathDate || t.dateOfDeath || parsed.deathDate || parsed.dateOfDeath || null,
-            photo: t.photo || parsed.photo || null,
-            notes: t.notes || parsed.text || parsed.notes || null,
-          };
-        });
-      }
-    } catch {
-      // not JSON, continue
-    }
-  }
-
-  // 2. Row / apartment crypt section (4-tier crypt stack).
-  const subsection = plot.locationDetail?.subsection || "";
-  const isRowPlot = subsection.startsWith("ROW-") || plot.plotNumber?.startsWith("ROW-");
-
-  if (isRowPlot) {
-    const gravesByTier = new Map();
-    for (const g of plot.graves || []) {
-      const t = Number(g.tier) || 1;
-      gravesByTier.set(t, g);
-    }
-
-    const buildTier = (tierNum, label) => {
-      const g = gravesByTier.get(tierNum);
-      if (!g) {
-        return { tier: tierNum, label, status: "available", photo: null };
-      }
-      const photo = getGravePhoto(g);
-      let notesText = g.details?.notes;
-      let birthDate = null;
-      let deathDate = null;
-      if (notesText) {
-        try {
-          const parsed = JSON.parse(notesText);
-          notesText = parsed.text || parsed.notes || null;
-          birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
-          deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
-        } catch {
-          // plain text notes
-        }
-      }
-      return {
-        tier: tierNum,
+  const tiers = [];
+  for (let tier = 1; tier <= total; tier += 1) {
+    const label = tierLabel(tier, total);
+    const grave = byTier.get(tier);
+    if (!grave) {
+      tiers.push({
+        tier,
         label,
-        deceasedName: g.deceasedName,
-        birthDate,
-        deathDate,
-        burialDate: g.burialDate,
-        status: g.status === "active" ? "occupied" : g.status || "occupied",
-        causeOfDeath: g.details?.causeOfDeath,
-        contactPerson: g.details?.contactPerson,
-        notes: notesText,
-        photo,
-      };
-    };
-
-    return [
-      buildTier(1, "Tier 1 (Ground Level)"),
-      buildTier(2, "Tier 2 (Second Level)"),
-      buildTier(3, "Tier 3 (Upper Level)"),
-      buildTier(4, "Tier 4 (Top Level)"),
-    ];
-  }
-
-  // 3. Multi-grave traditional ground plot (non-row).
-  if (plot.graves && plot.graves.length > 1) {
-    return plot.graves.map((g, idx) => {
-      let notesText = g.details?.notes;
-      const photo = getGravePhoto(g);
-      let birthDate = null;
-      let deathDate = null;
-      if (notesText) {
-        try {
-          const parsed = JSON.parse(notesText);
-          notesText = parsed.text || parsed.notes || null;
-          birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
-          deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
-        } catch {
-          // plain text notes
-        }
-      }
-      return {
-        tier: g.tier || idx + 1,
-        label: `Tier ${g.tier || idx + 1}`,
-        deceasedName: g.deceasedName,
-        birthDate,
-        deathDate,
-        burialDate: g.burialDate,
-        status: g.status === "active" ? "occupied" : g.status || "occupied",
-        causeOfDeath: g.details?.causeOfDeath,
-        contactPerson: g.details?.contactPerson,
-        notes: notesText,
-        photo,
-      };
+        status: total === 1 ? plot.status || "available" : "available",
+        photo: photoForTier(plot.photos, tier),
+      });
+      continue;
+    }
+    tiers.push({
+      id: grave.id,
+      tier,
+      label,
+      deceasedName: grave.deceasedName,
+      birthDate: grave.birthDate ?? null,
+      deathDate: grave.deathDate ?? null,
+      burialDate: grave.burialDate ?? null,
+      status: grave.status === "active" ? "occupied" : grave.status || "occupied",
+      causeOfDeath: grave.details?.causeOfDeath,
+      contactPerson: grave.details?.contactPerson,
+      notes: grave.details?.notes || null,
+      photo: photoForTier(plot.photos, tier),
     });
   }
-
-  // 4. Single traditional plot.
-  if (plot.graves?.length > 0) {
-    const g = plot.graves[0];
-    let photo = g.photo || null;
-    let notesText = g.details?.notes;
-    let birthDate = null;
-    let deathDate = null;
-    if (notesText) {
-      try {
-        const parsed = JSON.parse(notesText);
-        if (parsed.photo) photo = parsed.photo;
-        notesText = parsed.text || parsed.notes || null;
-        birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
-        deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
-      } catch {
-        // plain text notes
-      }
-    }
-    return [
-      {
-        tier: 1,
-        label: "Ground Burial Lot",
-        deceasedName: g.deceasedName,
-        birthDate,
-        deathDate,
-        burialDate: g.burialDate,
-        causeOfDeath: g.details?.causeOfDeath,
-        contactPerson: g.details?.contactPerson,
-        notes: notesText,
-        photo,
-        status: plot.status || "occupied",
-      },
-    ];
-  }
-
-  return [{ tier: 1, label: "Ground Burial Lot", status: plot.status || "available" }];
+  return tiers;
 }
 
 /**
- * Extract photo URL from a grave record if available.
+ * Photo for a grave record: its own tier's photo, else the plot-wide photo.
+ * Needs `grave.plot.photos` to be included by the API.
+ *
  * @param {object} grave
  * @returns {string|null}
  */
 export function getGravePhoto(grave) {
   if (!grave) return null;
-  if (grave.photo) return grave.photo;
-  if (grave.details?.notes) {
-    try {
-      const parsed = JSON.parse(grave.details.notes);
-      if (parsed.photo) return parsed.photo;
-      if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
-        const withPhoto = parsed.tiers.find((t) => t.photo);
-        if (withPhoto?.photo) return withPhoto.photo;
-        if (parsed.photo) return parsed.photo;
-      }
-    } catch {
-      // not JSON
-    }
-  }
-  return null;
+  return photoForTier(grave.plot?.photos, Number(grave.tier) || 1);
 }
 
 /** Canonical status -> presentation mapping. */
@@ -290,36 +151,31 @@ export function statusMeta(status) {
   }
 }
 
+/** Split a combined legacy name ("A & B", "A / B", "A and B") into parts. */
+function splitCombinedName(raw) {
+  if (raw.includes(" & ")) return raw.split(/\s*&\s*/).filter(Boolean);
+  if (raw.includes(" / ")) return raw.split(/\s*\/\s*/).filter(Boolean);
+  if (raw.toLowerCase().includes(" and ")) return raw.split(/\s+and\s+/i).filter(Boolean);
+  return [raw];
+}
+
 /**
- * Deceased names to show for a plot summary, split from tier data, multiple
- * graves, or a combined `deceasedName` string ("A & B", "A / B", "A and B").
+ * Deceased names buried in a plot, ordered by tier; [] when none. One grave
+ * whose name joins several people is split for display.
  */
+export function getPlotOccupantNames(plot) {
+  const graves = [...(plot?.graves || [])].sort(
+    (a, b) => (Number(a.tier) || 1) - (Number(b.tier) || 1)
+  );
+  const names = graves.map((g) => g.deceasedName?.trim()).filter(Boolean);
+  if (names.length === 1) return splitCombinedName(names[0]);
+  return names;
+}
+
+/** Names for a plot summary/callout, falling back to the plot number. */
 export function getPlotSummaryNames(p) {
   if (!p) return [];
-  const grave = p.graves?.[0];
-  if (grave?.details?.notes) {
-    try {
-      const parsed = JSON.parse(grave.details.notes);
-      if (Array.isArray(parsed.tiers)) {
-        const occ = parsed.tiers
-          .filter((t) => t.deceasedName && t.status === "occupied")
-          .map((t) => t.deceasedName.trim());
-        if (occ.length > 0) return occ;
-      }
-    } catch {
-      // not JSON
-    }
-  }
-  if (Array.isArray(p.graves) && p.graves.length > 1) {
-    const names = p.graves.map((g) => g.deceasedName?.trim()).filter(Boolean);
-    if (names.length > 0) return names;
-  }
-  const raw = (grave?.deceasedName || "").trim();
-  if (raw) {
-    if (raw.includes(" & ")) return raw.split(/\s*&\s*/).filter(Boolean);
-    if (raw.includes(" / ")) return raw.split(/\s*\/\s*/).filter(Boolean);
-    if (raw.toLowerCase().includes(" and ")) return raw.split(/\s+and\s+/i).filter(Boolean);
-    return [raw];
-  }
+  const names = getPlotOccupantNames(p);
+  if (names.length > 0) return names;
   return [p.plotNumber ? `Plot ${p.plotNumber}` : "Plot Details"];
 }

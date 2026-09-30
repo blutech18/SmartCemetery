@@ -37,11 +37,25 @@ function readHeader(headers, name) {
 }
 
 /**
- * PURE: extract the client IP address from a request's headers.
+ * Number of trusted reverse proxies in front of the app, from
+ * `TRUSTED_PROXY_COUNT`. 0 (unset) keeps the legacy behavior of reading the
+ * left-most `x-forwarded-for` entry.
+ */
+function trustedProxyCount() {
+  const n = Number.parseInt(process.env.TRUSTED_PROXY_COUNT || "", 10);
+  return Number.isInteger(n) && n > 0 && n <= 10 ? n : 0;
+}
+
+/**
+ * PURE (given the environment): extract the client IP address from a
+ * request's headers.
  *
- * Prefers the first value of `x-forwarded-for` (a comma-separated list where
- * the left-most entry is the originating client), then falls back to
- * `x-real-ip`. Returns "" (empty string) when neither is present (Req 14.2).
+ * The left-most `x-forwarded-for` entry is client-controlled, so when
+ * `TRUSTED_PROXY_COUNT=N` is set the address is taken N entries from the
+ * RIGHT — the one appended by the nearest trusted proxy — which a client
+ * cannot spoof. This matters because rate limits are keyed on this value.
+ * When unset, the left-most entry is used (correct only if the edge proxy
+ * overwrites the header). Falls back to `x-real-ip`, then "" (Req 14.2).
  *
  * @param {{ headers?: Headers | Record<string, string> }} request
  * @returns {string} the client IP, or "" if unavailable
@@ -51,8 +65,12 @@ export function getClientIp(request) {
 
   const forwardedFor = readHeader(headers, "x-forwarded-for");
   if (forwardedFor) {
-    const first = forwardedFor.split(",")[0].trim();
-    if (first) return first;
+    const parts = forwardedFor.split(",").map((p) => p.trim()).filter(Boolean);
+    const trusted = trustedProxyCount();
+    const picked = trusted > 0
+      ? parts[Math.max(0, parts.length - trusted)]
+      : parts[0];
+    if (picked) return picked;
   }
 
   const realIp = readHeader(headers, "x-real-ip").trim();

@@ -167,3 +167,44 @@ export function getClientMapCenter() {
 
   return center;
 }
+
+// ─── Site identity and layout defaults ──────────────────────────────────────
+// Everything that is specific to one cemetery lives here (or in env), never in
+// components. NEXT_PUBLIC_* values are referenced statically so Next.js inlines
+// them into the browser bundle; all have a working default.
+
+function envText(value, fallback) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function envNumber(value, fallback, { min = -Infinity, max = Infinity } = {}) {
+  const n = Number(value);
+  return typeof value === "string" && value.trim() !== "" && Number.isFinite(n) && n >= min && n <= max
+    ? n
+    : fallback;
+}
+
+/** Full display name, e.g. "Bolonsori Public Cemetery". */
+export const SITE_NAME = envText(process.env.NEXT_PUBLIC_SITE_NAME, "Bolonsori Public Cemetery");
+
+/** Short brand word used in tight spaces, e.g. "Bolonsori". */
+export const SITE_SHORT_NAME = envText(process.env.NEXT_PUBLIC_SITE_SHORT_NAME, "Bolonsori");
+
+/**
+ * Reference rotation (degrees) of the burial-row grid. It is the default angle
+ * for new building layouts and the frame in which the boundary polygon is
+ * stored, so changing it after boundaries are saved rotates them.
+ */
+export const DEFAULT_GRID_ANGLE_DEG = envNumber(process.env.NEXT_PUBLIC_GRID_ANGLE, 37.7, {
+  min: -360,
+  max: 360,
+});
+
+/** Tiers per multi-tier building plot created by the layout tools. */
+export const DEFAULT_BUILDING_TIERS = Math.round(
+  envNumber(process.env.NEXT_PUBLIC_DEFAULT_BUILDING_TIERS, 4, { min: 2, max: 20 })
+);
+
+/** Starting footprint (metres) offered when generating a new building. */
+export const DEFAULT_BUILDING_LENGTH_M = 26.5;
+export const DEFAULT_BUILDING_WIDTH_M = 2.8;

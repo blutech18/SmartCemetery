@@ -14,18 +14,10 @@ import {
   DecryptionError,
 } from "@/lib/encryption";
 import { getClientIp, writeAuditLog } from "@/lib/audit";
+import { stripSensitiveDetail } from "@/lib/plot-query";
+import { schemaOutOfDateResponse } from "@/lib/db-errors";
+import { MAX_TIERS } from "@/lib/cemetery-layout";
 import { boundedRateLimit, consumeRateLimit } from "@/lib/rate-limit";
-
-// GraveDetail fields and encryption metadata that must never be exposed to
-// unauthenticated callers.
-const PRIVATE_DETAIL_FIELDS = [
-  "contactPerson",
-  "contactPhone",
-  "causeOfDeath",
-  "notes",
-  "encryptionKeyVersion",
-  "notesEncrypted",
-];
 
 // Uniform encryption-error response (Req 3.3, 3.4). Shape matches the platform
 // error envelope: { error: { type, message } }.
@@ -34,17 +26,6 @@ function encryptionErrorResponse(message) {
     { error: { type: "encryption", message } },
     { status: 500 }
   );
-}
-
-// Remove sensitive fields from a GraveDetail so unauthenticated callers never
-// receive encrypted (or plaintext) sensitive values.
-function stripSensitiveDetail(detail) {
-  if (!detail) return detail;
-  const result = { ...detail };
-  for (const field of PRIVATE_DETAIL_FIELDS) {
-    if (field in result) delete result[field];
-  }
-  return result;
 }
 
 /**
@@ -67,7 +48,7 @@ function exposeGraveDetails(grave, authorized) {
 const CREATE_GRAVE_SCHEMA = {
   deceasedName: { required: true, type: "string", trim: true, max: 200 },
   plotId: { required: true, type: "integer" },
-  tier: { type: "integer", min: 1, max: 4 },
+  tier: { type: "integer", min: 1, max: MAX_TIERS },
 };
 
 // Optional sensitive detail fields accepted on creation. Bounds mirror the
@@ -75,6 +56,8 @@ const CREATE_GRAVE_SCHEMA = {
 // create path.
 const CREATE_GRAVE_DETAILS_SCHEMA = {
   burialDate: { type: "string", trim: true, max: 40 },
+  birthDate: { type: "string", trim: true, max: 40 },
+  deathDate: { type: "string", trim: true, max: 40 },
   causeOfDeath: { type: "string", trim: true, max: 5000 },
   contactPerson: { type: "string", trim: true, max: 500 },
   contactPhone: { type: "string", trim: true, max: 100 },
@@ -159,6 +142,7 @@ export async function GET(request) {
               locationDetail: {
                 include: { location: true },
               },
+              photos: { select: { tier: true, url: true } },
             },
           },
           details: true,
@@ -183,6 +167,8 @@ export async function GET(request) {
     if (error instanceof EncryptionKeyError) {
       return encryptionErrorResponse("Encryption key is unavailable or invalid");
     }
+    const behind = schemaOutOfDateResponse(error, "GET /api/graves");
+    if (behind) return behind;
     console.error("GET /api/graves error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -210,14 +196,16 @@ export async function POST(request) {
     if (!detailValidation.valid) {
       return validationErrorResponse(detailValidation.errors);
     }
-    const { burialDate, causeOfDeath, contactPerson, contactPhone, notes } =
+    const { burialDate, birthDate, deathDate, causeOfDeath, contactPerson, contactPhone, notes } =
       detailValidation.value;
     const { confirm } = body;
 
-    if (burialDate !== undefined && !Number.isFinite(new Date(burialDate).getTime())) {
-      return validationErrorResponse([
-        { field: "burialDate", code: "type", message: "burialDate must be a valid date" },
-      ]);
+    for (const [field, value] of Object.entries({ burialDate, birthDate, deathDate })) {
+      if (value !== undefined && value !== "" && !Number.isFinite(new Date(value).getTime())) {
+        return validationErrorResponse([
+          { field, code: "type", message: `${field} must be a valid date` },
+        ]);
+      }
     }
 
     // Duplicate gating (Req 4.2–4.5). Run AFTER authz + validation but BEFORE
@@ -290,10 +278,20 @@ export async function POST(request) {
     const transactionResult = await prisma.$transaction(async (tx) => {
       const existingPlot = await tx.plot.findUnique({
         where: { id: plotId },
-        select: { id: true, status: true },
+        select: { id: true, status: true, totalTiers: true },
       });
       if (!existingPlot) {
         return { claimError: { status: 404, message: "Plot not found" } };
+      }
+
+      // The tier must exist in this plot (an ordinary lot has a single tier).
+      if (Number.isFinite(existingPlot.totalTiers) && tier > existingPlot.totalTiers) {
+        return {
+          claimError: {
+            status: 400,
+            message: `Tier ${tier} does not exist: this plot has ${existingPlot.totalTiers} tier(s)`,
+          },
+        };
       }
 
       // Check if this specific tier is already taken
@@ -321,6 +319,8 @@ export async function POST(request) {
           plotId,
           tier,
           burialDate: burialDate ? new Date(burialDate) : null,
+          birthDate: birthDate ? new Date(birthDate) : null,
+          deathDate: deathDate ? new Date(deathDate) : null,
           status: "active",
         },
       });
@@ -342,7 +342,12 @@ export async function POST(request) {
       const grave = await tx.grave.findUnique({
         where: { id: newGrave.id },
         include: {
-          plot: { include: { locationDetail: { include: { location: true } } } },
+          plot: {
+            include: {
+              locationDetail: { include: { location: true } },
+              photos: { select: { tier: true, url: true } },
+            },
+          },
           details: true,
         },
       });

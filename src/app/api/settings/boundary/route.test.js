@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    appSetting: { findUnique: vi.fn(), upsert: vi.fn() },
+    appSetting: { findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
   },
 }));
 
@@ -16,7 +16,7 @@ vi.mock("@/lib/audit", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { GET, PUT, validateBoundaryOffsets } from "./route";
+import { GET, PUT, DELETE, validateBoundaryOffsets } from "./route";
 import { prisma } from "@/lib/db";
 import { requireAuth, requireRole } from "@/lib/authz";
 import { writeAuditLog } from "@/lib/audit";
@@ -92,5 +92,31 @@ describe("GET/PUT /api/settings/boundary", () => {
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: "boundary.update", userId: 1 })
     );
+  });
+});
+
+describe("DELETE /api/settings/boundary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireRole.mockResolvedValue({ ok: true, user: { id: 1, role: "Admin" } });
+  });
+
+  it("removes the saved boundary and audits it", async () => {
+    prisma.appSetting.deleteMany.mockResolvedValue({ count: 1 });
+    const res = await DELETE(makeRequest("DELETE"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).offsets).toBeNull();
+    expect(prisma.appSetting.deleteMany).toHaveBeenCalledWith({ where: { key: "cmp_boundary_offsets" } });
+    expect(writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "boundary.reset", userId: 1 }));
+  });
+
+  it("is admin-only", async () => {
+    requireRole.mockResolvedValueOnce({
+      ok: false,
+      response: new Response(JSON.stringify({ error: { type: "forbidden" } }), { status: 403 }),
+    });
+    const res = await DELETE(makeRequest("DELETE"));
+    expect(res.status).toBe(403);
+    expect(prisma.appSetting.deleteMany).not.toHaveBeenCalled();
   });
 });

@@ -191,9 +191,12 @@ export function decryptGraveDetail(detail) {
     if (field in result) {
       try {
         result[field] = decryptField(result[field], version);
-      } catch {
+      } catch (err) {
         // Key mismatch or corrupted value — return null so the rest of the
         // record remains accessible (e.g. deceasedName, burialDate, plot).
+        // Log (field/version only, never values) so a wrong production key is
+        // visible instead of looking like empty records.
+        console.error(`[encryption] could not decrypt ${field} (key version ${version}): ${err?.name}`);
         result[field] = null;
       }
     }
@@ -201,7 +204,8 @@ export function decryptGraveDetail(detail) {
   if (result.notesEncrypted && "notes" in result) {
     try {
       result.notes = decryptField(result.notes, version);
-    } catch {
+    } catch (err) {
+      console.error(`[encryption] could not decrypt notes (key version ${version}): ${err?.name}`);
       result.notes = null;
     }
   }

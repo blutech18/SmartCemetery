@@ -6,6 +6,7 @@ import { KpiCard } from "../../../components/dashboard/KpiCard";
 import { Panel } from "../../../components/ui/Panel";
 import { Badge } from "../../../components/ui/Badge";
 import { Skeleton } from "../../../components/ui/Skeleton";
+import { SITE_NAME } from "../../../lib/config";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid
@@ -152,7 +153,7 @@ export default function ReportsPage() {
             <div className="report-workspace-header__identity">
               <div className="report-workspace-header__eyebrow">
                 <FileText size={14} aria-hidden="true" />
-                <span>Bolonsori Public Cemetery</span>
+                <span>{SITE_NAME}</span>
               </div>
               <h1 id="operations-report-title" className="report-workspace-header__title">
                 Operations Report
@@ -636,7 +637,7 @@ export default function ReportsPage() {
         {/* Report Footer */}
         <Panel style={{ padding: "20px 32px", background: "rgba(255, 255, 255, 0.02)", borderTop: "2px solid var(--border-default)" }}>
           <div className="flex items-center justify-between flex-wrap gap-sm text-xs text-muted">
-            <span>Smart Cemetery Navigation and Monitoring Platform â€” Bolonsori Public Cemetery</span>
+            <span>Smart Cemetery Navigation and Monitoring Platform — {SITE_NAME}</span>
             <span>Report generated on {generatedAt}</span>
           </div>
         </Panel>

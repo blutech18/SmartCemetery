@@ -2,10 +2,29 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/authz";
 import { getClientIp, writeAuditLog } from "@/lib/audit";
+import { MAX_TIERS, sectionFromPlotNumber } from "@/lib/cemetery-layout";
 
 // Plot statuses accepted by the layout editor. Kept in sync with
 // `src/app/api/plots/[id]/route.js`.
 const PLOT_STATUSES = ["available", "occupied", "reserved", "maintenance"];
+
+// Returned to the client after a save so new plots are building-aware at once.
+const SAVED_PLOT_SELECT = {
+  id: true,
+  plotNumber: true,
+  locationDetailId: true,
+  totalTiers: true,
+  status: true,
+  gpsLat: true,
+  gpsLng: true,
+  locationDetail: { select: { id: true, subsection: true } },
+};
+
+/** Tier count for a created plot: an integer 1..MAX_TIERS, default 1 (ordinary lot). */
+function parseTotalTiers(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_TIERS ? n : 1;
+}
 
 export async function POST(request) {
   try {
@@ -101,17 +120,25 @@ export async function POST(request) {
           validUpdates.push({ id, gpsLat: lat, gpsLng: lng });
         } else if (p.plotNumber) {
           const plotNumber = String(p.plotNumber).trim().slice(0, 30);
+          // Resolve the section: explicit id, else the named building, else the
+          // plot number without its column suffix (how the grid generator names it).
           let locId = parseInt(p.locationDetailId, 10);
           if (!Number.isInteger(locId) || locId <= 0) {
-            const match = plotNumber.match(/^(ROW-[EW]\d+)/i);
-            if (match) {
-              locId = locationDetailMap.get(match[1].toUpperCase()) || null;
+            const candidates = [p.buildingKey, sectionFromPlotNumber(plotNumber)];
+            locId = null;
+            for (const name of candidates) {
+              const hit = name ? locationDetailMap.get(String(name).trim().toUpperCase()) : null;
+              if (hit) {
+                locId = hit;
+                break;
+              }
             }
           }
           if (locId && plotNumber) {
             validCreates.push({
               plotNumber,
               locationDetailId: locId,
+              totalTiers: parseTotalTiers(p.totalTiers),
               status: PLOT_STATUSES.includes(p.status) ? p.status : "available",
               gpsLat: lat,
               gpsLng: lng,
@@ -172,7 +199,7 @@ export async function POST(request) {
             gpsLat: item.gpsLat,
             gpsLng: item.gpsLng,
           },
-          select: { id: true, plotNumber: true, locationDetailId: true, status: true, gpsLat: true, gpsLng: true },
+          select: SAVED_PLOT_SELECT,
         })
       );
     }
@@ -194,11 +221,12 @@ export async function POST(request) {
           create: {
             plotNumber: item.plotNumber,
             locationDetailId: item.locationDetailId,
+            totalTiers: item.totalTiers,
             status: item.status,
             gpsLat: item.gpsLat,
             gpsLng: item.gpsLng,
           },
-          select: { id: true, plotNumber: true, locationDetailId: true, status: true, gpsLat: true, gpsLng: true },
+          select: SAVED_PLOT_SELECT,
         })
       );
     }

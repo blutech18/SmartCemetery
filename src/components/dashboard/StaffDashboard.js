@@ -75,9 +75,9 @@ export function StaffDashboard({ userName }) {
         description="Verify records, monitor plot status, and assist visitors."
         actions={
           <>
-            <Button variant="secondary" href="/dashboard/map?locate=bolonsiri">
+            <Button variant="secondary" href="/dashboard/map?locate=cemetery">
               <Compass size={16} />
-              Locate Bolonsiri
+              Locate Cemetery
             </Button>
             <Button variant="primary" href="/dashboard/verification">
               <BadgeCheck size={16} />

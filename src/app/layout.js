@@ -2,6 +2,7 @@ import "./globals.css";
 import "./public.css";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { SITE_NAME, SITE_SHORT_NAME } from "@/lib/config";
 
 // Self-hosted by next/font: no remote @import, no render-blocking request.
 const inter = Inter({
@@ -19,8 +20,8 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata = {
   title: "Smart Cemetery — Navigation & Monitoring Platform",
   description:
-    "Digitalizing burial records with interactive navigation, smart search, and real-time monitoring for Bolonsori Public Cemetery.",
-  keywords: ["cemetery", "navigation", "burial records", "smart cemetery", "Bolonsori"],
+    `Digitalizing burial records with interactive navigation, smart search, and real-time monitoring for ${SITE_NAME}.`,
+  keywords: ["cemetery", "navigation", "burial records", "smart cemetery", SITE_SHORT_NAME],
   authors: [{ name: "Smart Cemetery Team" }],
 };
 

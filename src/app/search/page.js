@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Landmark, Search, Archive, MapPin, ChevronRight, User } from "lucide-react";
 import { PublicThemeToggle } from "@/components/ui/PublicThemeToggle";
+import { SITE_NAME } from "@/lib/config";
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -58,7 +59,7 @@ function SearchContent() {
       {/* Navigation */}
       <nav className={`premium-nav ${isScrolled ? "scrolled" : ""}`}>
         <Link href="/" className="premium-brand">
-          <span>Bolonsori Public Cemetery</span>
+          <span>{SITE_NAME}</span>
         </Link>
         <div className="premium-nav-links">
           <PublicThemeToggle />
@@ -168,7 +169,7 @@ function SearchContent() {
 
       {/* Footer */}
       <footer className="premium-footer">
-        <p>© {new Date().getFullYear()} Bolonsori Public Cemetery Platform.</p>
+        <p>© {new Date().getFullYear()} {SITE_NAME} Platform.</p>
       </footer>
     </div>
   );

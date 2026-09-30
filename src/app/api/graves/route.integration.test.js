@@ -266,6 +266,48 @@ describe("Task 5.2 — secured grave endpoints", () => {
 // Task 7.4 — Property 10: creation gated by duplicates + confirmation flag
 // Validates: Requirements 4.2, 4.3, 4.4
 // =============================================================================
+describe("tier validity comes from the plot, not a fixed number", () => {
+  function plotWithTiers(totalTiers) {
+    prisma.$transaction.mockImplementation(async (fn) => {
+      const tx = {
+        grave: {
+          create: vi.fn(async ({ data }) => ({ id: 100, ...data })),
+          findUnique: vi.fn(async () => ({ id: 100, deceasedName: "T", plotId: 10, details: null })),
+          findFirst: vi.fn(async () => null),
+        },
+        graveDetail: { create: vi.fn() },
+        plot: {
+          findUnique: vi.fn(async () => ({ id: 10, status: "available", totalTiers })),
+          update: vi.fn(async () => ({})),
+        },
+      };
+      lastTx = tx;
+      return fn(tx);
+    });
+  }
+
+  it("rejects a tier the plot does not have (an ordinary lot has one)", async () => {
+    plotWithTiers(1);
+    const res = await POST(postRequest({ deceasedName: "John Smith", plotId: 10, tier: 2 }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/Tier 2 does not exist/);
+    expect(lastTx.grave.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts any tier up to the plot's own tier count, including beyond four", async () => {
+    plotWithTiers(6);
+    const res = await POST(postRequest({ deceasedName: "John Smith", plotId: 10, tier: 6 }));
+    expect(res.status).toBe(201);
+    expect(lastTx.grave.create).toHaveBeenCalledWith({ data: expect.objectContaining({ plotId: 10, tier: 6 }) });
+  });
+
+  it("still enforces one absolute cap so a request cannot ask for an absurd tier", async () => {
+    plotWithTiers(99);
+    const res = await POST(postRequest({ deceasedName: "John Smith", plotId: 10, tier: 500 }));
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("Task 7.4 — Property 10: creation gating", () => {
   it("blocks with 409 (no creation) IFF a duplicate exists AND confirm !== true; otherwise creation proceeds", async () => {
     await fc.assert(
