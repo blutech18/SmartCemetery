@@ -66,19 +66,59 @@ export function formatPlotDate(dateStr) {
 export function extractPlotTiers(plot) {
   if (!plot) return [];
 
-  // 1. Explicit tier data.
+  // 1. Explicit tier data from apartment_niche_stack notes JSON.
   const grave = plot.graves?.[0];
   if (grave?.details?.notes) {
     try {
       const parsed = JSON.parse(grave.details.notes);
       if (parsed.type === "apartment_niche_stack" && Array.isArray(parsed.tiers)) {
-        return parsed.tiers.map((t) => ({
-          ...t,
-          birthDate: t.birthDate || t.dateOfBirth || parsed.birthDate || parsed.dateOfBirth || null,
-          deathDate: t.deathDate || t.dateOfDeath || parsed.deathDate || parsed.dateOfDeath || null,
-          photo: t.photo || parsed.photo || null,
-          notes: t.notes || parsed.text || parsed.notes || null,
-        }));
+        // Overlay any real DB grave records by tier onto the parsed tier stack
+        const dbGravesByTier = new Map();
+        for (const g of plot.graves || []) {
+          if (g.tier != null) dbGravesByTier.set(Number(g.tier), g);
+        }
+
+        return parsed.tiers.map((t) => {
+          const tierNum = Number(t.tier) || 1;
+          const dbGrave = dbGravesByTier.get(tierNum);
+          if (dbGrave) {
+            let birthDate = t.birthDate || t.dateOfBirth || null;
+            let deathDate = t.deathDate || t.dateOfDeath || null;
+            let notesText = t.notes || null;
+            if (dbGrave.details?.notes) {
+              try {
+                const sub = JSON.parse(dbGrave.details.notes);
+                if (sub.type !== "apartment_niche_stack") {
+                  birthDate = sub.birthDate || sub.dateOfBirth || birthDate;
+                  deathDate = sub.deathDate || sub.dateOfDeath || deathDate;
+                  notesText = sub.text || sub.notes || notesText;
+                }
+              } catch {
+                notesText = dbGrave.details.notes;
+              }
+            }
+            return {
+              ...t,
+              id: dbGrave.id,
+              deceasedName: dbGrave.deceasedName,
+              burialDate: dbGrave.burialDate ?? t.burialDate,
+              status: dbGrave.status === "active" ? "occupied" : (dbGrave.status || "occupied"),
+              birthDate,
+              deathDate,
+              photo: getGravePhoto(dbGrave) || t.photo || null,
+              notes: notesText,
+              causeOfDeath: dbGrave.details?.causeOfDeath || t.causeOfDeath,
+              contactPerson: dbGrave.details?.contactPerson || t.contactPerson,
+            };
+          }
+          return {
+            ...t,
+            birthDate: t.birthDate || t.dateOfBirth || parsed.birthDate || parsed.dateOfBirth || null,
+            deathDate: t.deathDate || t.dateOfDeath || parsed.deathDate || parsed.dateOfDeath || null,
+            photo: t.photo || parsed.photo || null,
+            notes: t.notes || parsed.text || parsed.notes || null,
+          };
+        });
       }
     } catch {
       // not JSON, continue
@@ -131,10 +171,10 @@ export function extractPlotTiers(plot) {
     };
 
     return [
-      buildTier(4, "Tier 4 (Top Level)"),
-      buildTier(3, "Tier 3 (Upper Level)"),
-      buildTier(2, "Tier 2 (Second Level)"),
       buildTier(1, "Tier 1 (Ground Level)"),
+      buildTier(2, "Tier 2 (Second Level)"),
+      buildTier(3, "Tier 3 (Upper Level)"),
+      buildTier(4, "Tier 4 (Top Level)"),
     ];
   }
 
