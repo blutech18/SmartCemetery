@@ -13,6 +13,7 @@ import { getGravePhoto } from "@/lib/plot-format";
 const EMPTY_FORM = {
   deceasedName: "",
   plotId: "",
+  tier: 1,
   dateOfBirth: "",
   dateOfDeath: "",
   burialDate: "",
@@ -196,6 +197,7 @@ export default function GravesPage() {
         body: JSON.stringify({
           deceasedName: form.deceasedName,
           plotId: parseInt(form.plotId),
+          tier: form.tier ? parseInt(form.tier) : 1,
           burialDate: form.burialDate || null,
           causeOfDeath: form.causeOfDeath || null,
           contactPerson: form.contactPerson || null,
@@ -312,6 +314,7 @@ export default function GravesPage() {
     setForm({
       deceasedName: grave.deceasedName || "",
       plotId: String(grave.plotId || ""),
+      tier: grave.tier || 1,
       dateOfBirth: formatDateForInput(birthDate),
       dateOfDeath: formatDateForInput(deathDate),
       burialDate: formatDateForInput(grave.burialDate),
@@ -651,6 +654,29 @@ export default function GravesPage() {
                       ))}
                     </select>
                   </div>
+
+                  {(() => {
+                    const selectedPlot = plots.find((p) => String(p.id) === String(form.plotId));
+                    const isRow = selectedPlot?.plotNumber?.startsWith("ROW-") || selectedPlot?.locationDetail?.subsection?.startsWith("ROW-");
+                    if (!isRow) return null;
+                    return (
+                      <div className="form-group">
+                        <label className="form-label">Crypt Niche Tier *</label>
+                        <select
+                          className="form-select"
+                          value={form.tier || 1}
+                          onChange={(e) => setForm({ ...form, tier: parseInt(e.target.value, 10) })}
+                          required
+                          id="grave-form-tier"
+                        >
+                          <option value={1}>Tier 1 (Ground Level)</option>
+                          <option value={2}>Tier 2 (Second Level)</option>
+                          <option value={3}>Tier 3 (Upper Level)</option>
+                          <option value={4}>Tier 4 (Top Level)</option>
+                        </select>
+                      </div>
+                    );
+                  })()}
 
                   {/* Life & Interred Dates */}
                   <div className="grid grid-2">

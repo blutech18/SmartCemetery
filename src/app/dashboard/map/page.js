@@ -220,7 +220,7 @@ function MapPageInner() {
 
   const fetchPlots = useCallback(async () => {
     try {
-      const res = await fetch("/api/plots?limit=1000");
+      const res = await fetch("/api/plots?limit=1000", { cache: "no-store" });
       const data = await res.json();
       setPlots(data.plots || []);
       return data.plots || [];
@@ -267,7 +267,11 @@ function MapPageInner() {
   // cascading re-render effects.
   const activeDetailsPlot = useMemo(() => {
     if (!detailsPlot) return null;
-    return plots.find((p) => p.id === detailsPlot.id) || detailsPlot;
+    const fresh = plots.find((p) => p.id === detailsPlot.id);
+    if (fresh && (fresh.graves?.length || 0) >= (detailsPlot.graves?.length || 0)) {
+      return fresh;
+    }
+    return detailsPlot;
   }, [plots, detailsPlot]);
 
   // Re-fetch plots whenever the user returns to this browser tab so changes

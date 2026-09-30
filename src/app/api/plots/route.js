@@ -166,10 +166,17 @@ export async function GET(request) {
       graves: (p.graves || []).map((g) => exposeGraveDetails(g, canSeeSensitive)),
     }));
 
-    return NextResponse.json({
-      plots: plotsWithDetails,
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-    });
+    return NextResponse.json(
+      {
+        plots: plotsWithDetails,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      }
+    );
   } catch (error) {
     console.error("GET /api/plots error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

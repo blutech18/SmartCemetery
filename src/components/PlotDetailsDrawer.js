@@ -137,8 +137,7 @@ export default function PlotDetailsDrawer({
     return () => observer.disconnect();
   }, []);
 
-  const [localPlot, setLocalPlot] = useState(null);
-  const activePlot = localPlot && localPlot.id === plot?.id ? localPlot : plot;
+  const activePlot = plot;
 
   // Photo modal state
   const [showPhotoModal, setShowPhotoModal] = useState(false);
@@ -1963,10 +1962,12 @@ export default function PlotDetailsDrawer({
                       // Update local plot state
                       const updatedPlot = JSON.parse(JSON.stringify(activePlot));
                       if (!updatedPlot.graves) updatedPlot.graves = [];
-                      // Remove the grave from its old plot in allPlots (handled by parent re-fetch)
-                      // Add it to this plot
-                      updatedPlot.graves.push(data);
-                      updatedPlot.graves.sort((a, b) => a.tier - b.tier);
+                      const tierNum = Number(data.tier) || Number(currentTier?.tier) || 1;
+                      updatedPlot.graves = updatedPlot.graves.filter(
+                        (g) => (Number(g.tier) || 1) !== tierNum && g.id !== data.id
+                      );
+                      updatedPlot.graves.push({ ...data, tier: tierNum });
+                      updatedPlot.graves.sort((a, b) => (Number(a.tier) || 1) - (Number(b.tier) || 1));
                       if (updatedPlot.status === "available") {
                         updatedPlot.status = "occupied";
                       }
