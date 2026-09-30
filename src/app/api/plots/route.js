@@ -138,6 +138,7 @@ export async function GET(request) {
             select: {
               id: true,
               deceasedName: true,
+              tier: true,
               status: true,
               burialDate: true,
               details: {

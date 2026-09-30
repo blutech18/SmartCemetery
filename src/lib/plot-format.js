@@ -85,47 +85,15 @@ export function extractPlotTiers(plot) {
     }
   }
 
-  // 2. Multi-grave plot.
-  if (plot.graves && plot.graves.length > 1) {
-    return plot.graves.map((g, idx) => {
-      let notesText = g.details?.notes;
-      const photo = getGravePhoto(g);
-      let birthDate = null;
-      let deathDate = null;
-      if (notesText) {
-        try {
-          const parsed = JSON.parse(notesText);
-          notesText = parsed.text || parsed.notes || null;
-          birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
-          deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
-        } catch {
-          // plain text notes
-        }
-      }
-      return {
-        tier: idx + 1,
-        label: `Tier ${idx + 1}`,
-        deceasedName: g.deceasedName,
-        birthDate,
-        deathDate,
-        burialDate: g.burialDate,
-        status: g.status === "active" ? "occupied" : g.status || "occupied",
-        causeOfDeath: g.details?.causeOfDeath,
-        contactPerson: g.details?.contactPerson,
-        notes: notesText,
-        photo,
-      };
-    });
-  }
-
-  // 3. Row / apartment crypt section.
+  // 2. Row / apartment crypt section (4-tier crypt stack).
   const subsection = plot.locationDetail?.subsection || "";
   const isRowPlot = subsection.startsWith("ROW-") || plot.plotNumber?.startsWith("ROW-");
 
   if (isRowPlot) {
     const gravesByTier = new Map();
     for (const g of plot.graves || []) {
-      gravesByTier.set(g.tier, g);
+      const t = Number(g.tier) || 1;
+      gravesByTier.set(t, g);
     }
 
     const buildTier = (tierNum, label) => {
@@ -168,6 +136,39 @@ export function extractPlotTiers(plot) {
       buildTier(2, "Tier 2 (Second Level)"),
       buildTier(1, "Tier 1 (Ground Level)"),
     ];
+  }
+
+  // 3. Multi-grave traditional ground plot (non-row).
+  if (plot.graves && plot.graves.length > 1) {
+    return plot.graves.map((g, idx) => {
+      let notesText = g.details?.notes;
+      const photo = getGravePhoto(g);
+      let birthDate = null;
+      let deathDate = null;
+      if (notesText) {
+        try {
+          const parsed = JSON.parse(notesText);
+          notesText = parsed.text || parsed.notes || null;
+          birthDate = parsed.birthDate || parsed.dateOfBirth || g.birthDate || g.details?.birthDate || null;
+          deathDate = parsed.deathDate || parsed.dateOfDeath || g.deathDate || g.details?.deathDate || null;
+        } catch {
+          // plain text notes
+        }
+      }
+      return {
+        tier: g.tier || idx + 1,
+        label: `Tier ${g.tier || idx + 1}`,
+        deceasedName: g.deceasedName,
+        birthDate,
+        deathDate,
+        burialDate: g.burialDate,
+        status: g.status === "active" ? "occupied" : g.status || "occupied",
+        causeOfDeath: g.details?.causeOfDeath,
+        contactPerson: g.details?.contactPerson,
+        notes: notesText,
+        photo,
+      };
+    });
   }
 
   // 4. Single traditional plot.

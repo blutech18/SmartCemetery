@@ -183,13 +183,21 @@ export default function PlotDetailsDrawer({
   const currentTier = tiers[selectedTierIndex] || tiers[0] || null;
   const primaryGrave = activePlot?.graves?.[0];
   const structurePhoto = getGravePhoto(primaryGrave) || activePlot?.photo || null;
-  const bannerPhoto = currentTier?.photo || structurePhoto || "/images/memorial_headstone.jpg";
+  // Multi-tier structures (like 4-tier crypt stacks) do not share photos across tiers.
+  // Each tier shows its own photo, or falls back to the default headstone placeholder.
+  const bannerPhoto =
+    currentTier?.photo ||
+    (tiers.length > 1
+      ? (activePlot?.photo || "/images/memorial_headstone.jpg")
+      : (structurePhoto || "/images/memorial_headstone.jpg"));
 
   const handleOpenPhotoModal = () => {
     setPhotoModalTier(currentTier?.tier || 1);
     setPhotoModalApplyToAll(false);
     setPhotoFile(null);
-    const currentPhoto = currentTier?.photo || structurePhoto || "";
+    const currentPhoto =
+      currentTier?.photo ||
+      (tiers.length > 1 ? "" : (structurePhoto || ""));
     setPhotoUrlInput(currentPhoto);
     setPhotoPreview(currentPhoto);
     setPhotoError("");
@@ -217,7 +225,10 @@ export default function PlotDetailsDrawer({
     setUploadingPhoto(true);
     setPhotoError("");
     try {
-      const graveId = activePlot.graves?.[0]?.id;
+      const tierGrave = activePlot.graves?.find(
+        (g) => (Number(g.tier) || 1) === (photoModalTier || currentTier?.tier || 1)
+      );
+      const graveId = tierGrave?.id || activePlot.graves?.[0]?.id;
       const endpoint = graveId
         ? `/api/graves/${graveId}/photo`
         : `/api/plots/${activePlot.id}/photo`;
@@ -1595,9 +1606,12 @@ export default function PlotDetailsDrawer({
                 color: isLight ? "#0f172a" : "#f8fafc",
                 border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.15)",
                 borderRadius: 12,
-                padding: 20,
+                padding: "18px 20px",
                 maxWidth: 440,
                 width: "100%",
+                maxHeight: "calc(100vh - 32px)",
+                overflowY: "auto",
+                boxSizing: "border-box",
                 boxShadow: "0 20px 45px rgba(0, 0, 0, 0.5)",
                 display: "flex",
                 flexDirection: "column",
