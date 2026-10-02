@@ -2,7 +2,8 @@
  * Remove duplicate copies of the demo sections left behind by earlier seed runs.
  *
  *   npm run db:cleanup-demo                          # dry run: prints the plan, writes nothing
- *   CLEANUP_CONFIRM=apply npm run db:cleanup-demo    # performs it
+ *   npm run db:cleanup-demo -- --apply               # performs it (any shell)
+ *   CLEANUP_CONFIRM=apply npm run db:cleanup-demo    # same, Bash only; PowerShell: $env:CLEANUP_CONFIRM="apply"
  *
  * Older versions of the seed created the demo sections (Section A/B/C) again on
  * every run, so plots like "A1-009" appear several times. This keeps the OLDEST
@@ -21,11 +22,11 @@ const { loadEnvConfig } = require("@next/env");
 
 loadEnvConfig(process.cwd());
 const prisma = new PrismaClient();
-const apply = process.env.CLEANUP_CONFIRM === "apply";
+const apply = process.argv.includes("--apply") || process.env.CLEANUP_CONFIRM === "apply";
 
 async function main() {
   const { DEMO_LOCATION_NAMES, planDemoCleanup } = await import("../src/lib/demo-data.js");
-  console.log(apply ? "MODE: APPLY" : "MODE: dry run (set CLEANUP_CONFIRM=apply to delete)");
+  console.log(apply ? "MODE: APPLY" : "MODE: dry run (add -- --apply to delete: npm run db:cleanup-demo -- --apply)");
 
   const rows = await prisma.location.findMany({
     where: { name: { in: DEMO_LOCATION_NAMES } },

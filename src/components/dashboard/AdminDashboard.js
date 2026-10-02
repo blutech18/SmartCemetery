@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { KpiCard } from "./KpiCard";
+import { LocateGraveCard } from "./LocateGraveCard";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { OccupancyChart } from "../charts/OccupancyChart";
@@ -158,6 +159,8 @@ export function AdminDashboard() {
           </>
         }
       />
+
+      <LocateGraveCard />
 
       <div className="grid grid-4 gap-md">
         <KpiCard

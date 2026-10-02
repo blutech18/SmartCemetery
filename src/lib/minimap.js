@@ -97,8 +97,8 @@ export function layoutMiniMap(
  * Zoom a view box by `factor` (<1 zooms in) keeping the point (fx, fy) fixed
  * on screen. Zoom is limited relative to the fitted view `fit`.
  */
-export function zoomView(view, factor, fx, fy, fit) {
-  const minW = fit.w / 12;
+export function zoomView(view, factor, fx, fy, fit, maxZoom = 12) {
+  const minW = fit.w / maxZoom;
   const maxW = fit.w * 1.5;
   const w = Math.min(maxW, Math.max(minW, view.w * factor));
   const k = w / view.w;

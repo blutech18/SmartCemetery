@@ -40,14 +40,18 @@ export async function PUT(request, { params }) {
     }
     const { locationDetailId, plotNumber, status, gpsLat, gpsLng } = validation.value;
 
-    // Preserve the occupancy invariant: a plot that holds grave records must
-    // not be moved to a non-occupied status (mirrors the atomic plot claim in
-    // POST /api/graves).
-    if (status !== undefined && status !== "occupied") {
+    // Preserve the occupancy invariant: a plot that holds grave records cannot
+    // become Available or Reserved. It may be put under Maintenance (repairs)
+    // and back to Occupied; its records stay either way.
+    if (status !== undefined && status !== "occupied" && status !== "maintenance") {
       const graveCount = await prisma.grave.count({ where: { plotId } });
       if (graveCount > 0) {
         return NextResponse.json(
-          { error: "This plot contains a grave record and must remain occupied" },
+          {
+            error:
+              `This plot has ${graveCount} grave record${graveCount === 1 ? "" : "s"}, so it cannot be marked ${status}. ` +
+              "Use Maintenance, or remove or move the record(s) first.",
+          },
           { status: 409 }
         );
       }
@@ -75,6 +79,12 @@ export async function PUT(request, { params }) {
   } catch (error) {
     if (error?.code === "P2025") {
       return NextResponse.json({ error: "Plot not found" }, { status: 404 });
+    }
+    if (error?.code === "P2002") {
+      return NextResponse.json(
+        { error: "Another plot in this section already has that plot number." },
+        { status: 409 }
+      );
     }
     console.error("PUT /api/plots/[id] error:", error);
     return NextResponse.json({ error: "Failed to update plot" }, { status: 500 });

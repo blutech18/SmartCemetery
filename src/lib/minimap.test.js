@@ -89,6 +89,11 @@ describe("minimap zoom and pan", () => {
     v = fit;
     for (let i = 0; i < 40; i += 1) v = zoomView(v, 2, 80, 45, fit);
     expect(v.w).toBeCloseTo(fit.w * 1.5);
+
+    // configurable maxZoom
+    let vCustom = fit;
+    for (let i = 0; i < 40; i += 1) vCustom = zoomView(vCustom, 0.5, 80, 45, fit, 5);
+    expect(vCustom.w).toBeCloseTo(fit.w / 5);
   });
 
   it("pans without changing the zoom", () => {

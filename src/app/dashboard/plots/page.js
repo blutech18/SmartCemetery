@@ -67,6 +67,7 @@ export default function PlotsPage() {
         plotNumber: plot.plotNumber,
         locationDetailId: plot.locationDetailId,
         status: plot.status,
+        graveCount: plot.graves?.length ?? 0,
       });
     } else {
       setIsEditing(false);
@@ -100,7 +101,9 @@ export default function PlotsPage() {
         toast.success(isEditing ? "Plot updated" : "Plot created");
         fetchPlots();
       } else if (res.status === 409) {
-        toast.error("Plot numbers must be unique per section.");
+        // The server says exactly why (duplicate number, plot has records, ...).
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error?.message || data?.error || "This change conflicts with an existing record.");
       } else if (res.status === 401 || res.status === 403) {
         toast.error("You don't have permission to manage plots.");
       } else {
@@ -437,11 +440,17 @@ export default function PlotsPage() {
                     value={currentPlot.status}
                     onChange={(e) => setCurrentPlot({ ...currentPlot, status: e.target.value })}
                   >
-                    <option value="available">Available</option>
+                    <option value="available" disabled={currentPlot.graveCount > 0}>Available</option>
                     <option value="occupied">Occupied</option>
-                    <option value="reserved">Reserved</option>
+                    <option value="reserved" disabled={currentPlot.graveCount > 0}>Reserved</option>
                     <option value="maintenance">Maintenance</option>
                   </select>
+                  {currentPlot.graveCount > 0 && (
+                    <p className="text-sm text-muted" style={{ marginTop: 4 }}>
+                      This plot has {currentPlot.graveCount} grave record{currentPlot.graveCount === 1 ? "" : "s"}, so it
+                      can be Occupied or under Maintenance. Its records are kept either way.
+                    </p>
+                  )}
                 </div>
               )}
 

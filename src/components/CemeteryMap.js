@@ -103,6 +103,10 @@ function GoogleMapLoadedView({
   buildingToolOpen = false,
   onUpdateBuildingConfig,
   onApplyBuildingConfig,
+  // Plot-picker support (both optional): plots listed here are drawn dimmed
+  // (they cannot take a record), and `fitPlots` frames every plot on load.
+  dimmedPlotIds = null,
+  fitPlots = false,
 }) {
   const { lat, lng } = getClientMapCenter();
   const center = useMemo(() => ({ lat, lng }), [lat, lng]);
@@ -134,6 +138,23 @@ function GoogleMapLoadedView({
   const [activeFilter, setActiveFilter] = useState("all");
 
   const effectiveFilter = statusFilter !== "all" ? statusFilter : activeFilter;
+
+  const dimmed = useMemo(
+    () => (dimmedPlotIds instanceof Set ? dimmedPlotIds : new Set(dimmedPlotIds || [])),
+    [dimmedPlotIds]
+  );
+
+  // Frame every pinned plot once the map is ready (used by the plot picker).
+  const fittedRef = useRef(false);
+  useEffect(() => {
+    if (!fitPlots || !map || !mapsReady || fittedRef.current) return;
+    const pinned = plots.filter((p) => !p._deleted && p.gpsLat != null && p.gpsLng != null);
+    if (pinned.length === 0) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    for (const p of pinned) bounds.extend({ lat: Number(p.gpsLat), lng: Number(p.gpsLng) });
+    fittedRef.current = true;
+    map.fitBounds(bounds, 48);
+  }, [fitPlots, map, mapsReady, plots]);
 
   // The building generator (handles, Apply & Save) is live only while its
   // adjuster tab is open, so a stray click on a building outline never pops it.
@@ -1256,7 +1277,8 @@ function GoogleMapLoadedView({
 
               {/* Subdivided Plot Cells with Crisp White Dividers & Status Colors */}
               {block.cells.map((cell) => {
-                const color = getPlotStatusColor(cell.status);
+                const isDimmed = dimmed.has(cell.plot?.id);
+                const color = isDimmed ? "#64748b" : getPlotStatusColor(cell.status);
                 const isSelected = selectedPlot?.id === cell.plot?.id;
                 const isHovered = hoveredPlot?.id === cell.plot?.id;
                 const matchesFilter =
@@ -1264,6 +1286,8 @@ function GoogleMapLoadedView({
                   cell.status?.toLowerCase() === effectiveFilter.toLowerCase();
                 const cellOpacity = isSelected
                   ? 0.95
+                  : isDimmed
+                  ? 0.3
                   : isHovered
                   ? 0.9
                   : matchesFilter
@@ -1285,7 +1309,7 @@ function GoogleMapLoadedView({
                         strokeWeight: isSelected ? 2.5 : cell.plot?._modified ? 2 : 1.5,
                         strokeOpacity: 1,
                         zIndex: isSelected ? 365 : isHovered ? 360 : 350,
-                        cursor: "pointer",
+                        cursor: isDimmed ? "not-allowed" : "pointer",
                       }}
                       onClick={() => {
                         if (
@@ -1587,7 +1611,8 @@ function GoogleMapLoadedView({
         {standalonePlots.map((plot) => {
           if (!plot.gpsLat || !plot.gpsLng) return null;
           const pos = { lat: Number(plot.gpsLat), lng: Number(plot.gpsLng) };
-          const color = getPlotStatusColor(plot.status);
+          const isDimmed = dimmed.has(plot.id);
+          const color = isDimmed ? "#64748b" : getPlotStatusColor(plot.status);
           const isSelected = selectedPlot?.id === plot.id;
           const isHovered = hoveredPlot?.id === plot.id;
 
@@ -1624,7 +1649,7 @@ function GoogleMapLoadedView({
                 paths={corners}
                 options={{
                   fillColor: color,
-                  fillOpacity: isSelected ? 0.95 : isHovered ? 0.9 : 0.85,
+                  fillOpacity: isSelected ? 0.95 : isDimmed ? 0.3 : isHovered ? 0.9 : 0.85,
                   strokeColor: plot._modified
                     ? "#F59E0B"
                     : isSelected
@@ -1633,7 +1658,7 @@ function GoogleMapLoadedView({
                   strokeWeight: plot._modified ? 3 : isSelected ? 3.5 : 1,
                   strokeOpacity: 1,
                   zIndex: isSelected ? 200 : isHovered ? 150 : 20,
-                  cursor: "pointer",
+                  cursor: isDimmed ? "not-allowed" : "pointer",
                 }}
                 onClick={() => {
                   if (typeof onSelectPlot === "function") {

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { SITE_NAME } from "@/lib/config";
 import {
   LayoutDashboard, Archive, MapPin, Map, ClipboardList, Users, MessageSquare,
-  LineChart, Search, Menu, X, Bell, Megaphone, BarChart3, BadgeCheck,
+  LineChart, Search, Menu, X, Bell, Megaphone, ScrollText, BadgeCheck,
 } from "lucide-react";
 
 /**
@@ -22,6 +22,7 @@ const NAV_GROUPS = {
       title: "Records",
       items: [
         { label: "Graves", href: "/dashboard/graves", icon: Archive },
+        { label: "Search Graves", href: "/dashboard/search", icon: Search },
         { label: "Verification", href: "/dashboard/verification", icon: BadgeCheck },
       ],
     },
@@ -45,7 +46,7 @@ const NAV_GROUPS = {
     {
       title: "Insight",
       items: [
-        { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+        { label: "User Log", href: "/dashboard/user-log", icon: ScrollText },
         { label: "Reports", href: "/dashboard/reports", icon: LineChart },
       ],
     },
@@ -57,6 +58,7 @@ const NAV_GROUPS = {
       title: "Records",
       items: [
         { label: "Graves", href: "/dashboard/graves", icon: Archive },
+        { label: "Search Graves", href: "/dashboard/search", icon: Search },
         { label: "Verification", href: "/dashboard/verification", icon: BadgeCheck },
       ],
     },

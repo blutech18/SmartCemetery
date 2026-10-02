@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { KpiCard } from "./KpiCard";
+import { LocateGraveCard } from "./LocateGraveCard";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { timeAgo } from "../../lib/dashboard-metrics";
@@ -29,7 +30,6 @@ export function ClientDashboard({ userName }) {
   const [requests, setRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,15 +56,6 @@ export function ClientDashboard({ userName }) {
 
   const pending = requests.filter((r) => r.status === "pending").length;
   const unread = notifications.filter((n) => !n.readAt).length;
-
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/dashboard/search?q=${encodeURIComponent(searchQuery.trim())}`);
-    } else {
-      router.push("/dashboard/search");
-    }
-  };
 
   return (
     <>
@@ -131,41 +122,7 @@ export function ClientDashboard({ userName }) {
         </Button>
       </div>
 
-      {/* Hero Quick Search Box for Visitors */}
-      <div className="staff-card mb-lg" style={{ background: "var(--theme-card-bg)", border: "1px solid var(--border-default)" }}>
-        <div className="staff-card-body" style={{ padding: "1.5rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
-            <div className="staff-card-icon-badge primary">
-              <Search size={28} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--text-primary)" }}>
-                Locate a Grave or Plot
-              </div>
-              <div style={{ fontSize: "0.825rem", color: "var(--text-muted)" }}>
-                Quickly search by deceased name, grave reference ID, or section number
-              </div>
-            </div>
-          </div>
-          <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <div style={{ position: "relative", flex: 1, minWidth: "260px" }}>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Enter deceased name (e.g. Maria Santos)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: "2.5rem", height: "42px" }}
-              />
-              <Search size={16} style={{ position: "absolute", left: "0.85rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-            </div>
-            <Button type="submit" variant="primary" style={{ height: "42px", padding: "0 1.25rem", gap: "0.5rem" }}>
-              <span>Search Directory</span>
-              <ArrowRight size={15} />
-            </Button>
-          </form>
-        </div>
-      </div>
+      <LocateGraveCard />
 
       {/* KPI Cards Grid */}
       <div className="grid grid-4 gap-md">

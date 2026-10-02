@@ -20,7 +20,7 @@ Earlier versions stored tier occupants, life dates and photos as JSON inside the
 1. Back up the database.
 2. `npm run db:migrate` (applies migration 8; schema only).
 3. `npm run db:backfill-tiers` — a **dry run** that prints what would change per plot and writes nothing.
-4. Review the output, then `BACKFILL_CONFIRM=apply npm run db:backfill-tiers`.
+4. Review the output, then `npm run db:backfill-tiers -- --apply` (works in PowerShell, cmd and Bash; `BACKFILL_CONFIRM=apply` is also accepted).
 
 The backfill is idempotent and transactional per plot. It decrypts strictly: a plot with any undecryptable field is skipped and reported (exit code 1), never treated as empty. It deletes only empty `Plot <number>` placeholder graves; a placeholder-named record holding real data is kept. Until step 4 is done, tier photos, life dates and multi-tier occupants that lived only in the JSON will not appear in the app.
 

@@ -2,7 +2,8 @@
  * Backfill normalized tier/photo data from legacy `notes` JSON.
  *
  *   npm run db:backfill-tiers                       # dry run (default), prints the plan
- *   BACKFILL_CONFIRM=apply npm run db:backfill-tiers # applies it
+ *   npm run db:backfill-tiers -- --apply             # applies it (any shell)
+ *   BACKFILL_CONFIRM=apply npm run db:backfill-tiers # same, Bash only; PowerShell: $env:BACKFILL_CONFIRM="apply"
  *
  * Back up the database first. Each plot is processed in its own transaction, so
  * a failure on one plot leaves the others (and that plot) untouched. The script
@@ -21,7 +22,7 @@ import {
 import { planPlotBackfill } from "../src/lib/legacy-notes.js";
 
 const prisma = new PrismaClient();
-const apply = process.env.BACKFILL_CONFIRM === "apply";
+const apply = process.argv.includes("--apply") || process.env.BACKFILL_CONFIRM === "apply";
 
 function decryptDetails(details) {
   if (!details) return null;
@@ -94,7 +95,7 @@ async function applyPlan(plot, plan) {
 
 async function main() {
   getCurrentKeyVersion(); // fail fast on a bad key version
-  console.log(apply ? "MODE: APPLY" : "MODE: dry run (set BACKFILL_CONFIRM=apply to write)");
+  console.log(apply ? "MODE: APPLY" : "MODE: dry run (add -- --apply to write: npm run db:backfill-tiers -- --apply)");
 
   const totals = { plots: 0, changed: 0, skipped: 0, deletes: 0, updates: 0, creates: 0, photos: 0 };
   let cursor = 0;

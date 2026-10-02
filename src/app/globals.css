@@ -1224,6 +1224,28 @@ body.modal-open .sidebar {
   align-items: stretch;
 }
 
+/* ── Plot Picker Modal Responsive Layout ─────────────────── */
+.plot-picker-modal {
+  max-width: 1040px !important;
+  width: min(1040px, 96vw) !important;
+  height: min(680px, 92vh) !important;
+  max-height: 92vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 1.2rem 1.4rem !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.plot-picker-body {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
 @media (max-width: 768px) {
   .modal-wide,
   .modal-lg {
@@ -1232,6 +1254,17 @@ body.modal-open .sidebar {
   .grave-modal-layout {
     grid-template-columns: 1fr;
     gap: 0.85rem;
+  }
+  .plot-picker-modal {
+    width: 96% !important;
+    height: 94vh !important;
+    max-height: 94vh !important;
+    padding: 1rem !important;
+  }
+  .plot-picker-body {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    gap: 0.75rem !important;
   }
 }
 

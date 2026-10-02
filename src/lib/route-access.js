@@ -45,12 +45,13 @@ export const ROUTE_ROLES = [
   { path: "/dashboard/users", roles: ["Admin"] },
   { path: "/dashboard/broadcasts", roles: ["Admin"] },
   { path: "/dashboard/analytics", roles: ["Admin"] },
+  { path: "/dashboard/user-log", roles: ["Admin"] },
   { path: "/dashboard/reports", roles: ["Admin"] },
   { path: "/dashboard/locations", roles: ["Admin"] },
   { path: "/dashboard/graves", roles: ["Admin", "Staff"] },
   { path: "/dashboard/plots", roles: ["Admin", "Staff"] },
   { path: "/dashboard/verification", roles: ["Admin", "Staff"] },
-  { path: "/dashboard/search", roles: ["Client"] },
+  { path: "/dashboard/search", roles: ["Client", "Admin", "Staff"] },
 ];
 
 /**

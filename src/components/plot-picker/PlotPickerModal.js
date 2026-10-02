@@ -2,10 +2,31 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import { Check, Maximize2, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import { buildingLabel, columnShortLabel } from "@/lib/cemetery-layout";
 import { canAddGrave, tierAvailability } from "@/lib/plot-format";
 import { hasPosition, layoutMiniMap, panView, zoomView } from "@/lib/minimap";
+import { getClientGoogleMapsApiKey } from "@/lib/config";
+import { getPlotStatusColor } from "@/lib/map-geometry";
+
+// The very same map as the Cemetery Map page (satellite imagery, building blocks,
+// plot cells, labels). Loaded on demand because it pulls in Google Maps.
+const CemeteryMap = dynamic(() => import("@/components/CemeteryMap"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ height: "100%", minHeight: 320, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div className="spinner spinner-lg" />
+    </div>
+  ),
+});
+
+const MAP_LEGEND = [
+  ["Available", "available"],
+  ["Occupied", "occupied"],
+  ["Hold / Reserved", "reserved"],
+  ["Sold", "sold"],
+];
 
 const COLORS = {
   free: { fill: "rgba(16, 185, 129, 0.55)", stroke: "#10b981" },
@@ -13,7 +34,9 @@ const COLORS = {
   blocked: { fill: "rgba(100, 116, 139, 0.22)", stroke: "rgba(100, 116, 139, 0.55)" },
   chosen: { fill: "rgba(59, 130, 246, 0.7)", stroke: "#3b82f6" },
 };
-const MAX_UNPLACED = 40;
+const MAX_UNPLACED = 150;
+// How long the satellite map may take to appear before the diagram is shown instead.
+const MAP_LOAD_TIMEOUT_MS = 12000;
 const MAX_MATCHES = 8;
 
 /**
@@ -59,6 +82,38 @@ export default function PlotPickerModal({
   const [hoverId, setHoverId] = useState(null);
   const [query, setQuery] = useState("");
 
+  // Satellite map (the Cemetery Map view) whenever a Google Maps key is set,
+  // otherwise the diagram. Google reports a rejected key through this global
+  // callback, and we fall back to the diagram rather than show a broken map.
+  const hasMapKey = Boolean(getClientGoogleMapsApiKey());
+  const [mode, setMode] = useState(() => (getClientGoogleMapsApiKey() ? "map" : "diagram"));
+  const [notice, setNotice] = useState("");
+  const [mapNote, setMapNote] = useState("");
+  useEffect(() => {
+    const previous = window.gm_authFailure;
+    window.gm_authFailure = () => {
+      setMode("diagram");
+      setMapNote("Google did not accept the map key for this address, so the diagram is shown instead.");
+      if (typeof previous === "function") previous();
+    };
+    return () => {
+      window.gm_authFailure = previous;
+    };
+  }, []);
+
+  // A map that never appears (slow or blocked network) must not leave a spinner
+  // forever: after a while show the diagram and say why.
+  useEffect(() => {
+    if (mode !== "map") return undefined;
+    const timer = setTimeout(() => {
+      if (!document.querySelector("#plot-picker-gmap .gm-style")) {
+        setMode("diagram");
+        setMapNote("The satellite map did not load, so the diagram is shown instead. You can try the Satellite map tab again.");
+      }
+    }, MAP_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [mode]);
+
   const svgRef = useRef(null);
   const drag = useRef(null);
   const moved = useRef(false);
@@ -96,6 +151,25 @@ export default function PlotPickerModal({
     [selectable, ignoreGraveId, selectedPlotId, selectedTier]
   );
 
+  // Plots that cannot take another record are drawn dimmed on the satellite map.
+  const blockedIds = useMemo(
+    () => new Set(plots.filter((p) => !selectable.has(p.id)).map((p) => p.id)),
+    [plots, selectable]
+  );
+
+  const handleMapSelect = useCallback(
+    (plot) => {
+      if (!plot) return;
+      if (!selectable.has(plot.id)) {
+        setNotice(`${plot.plotNumber} has no vacant tier — choose a plot that is not dimmed.`);
+        return;
+      }
+      setNotice("");
+      choose(plot);
+    },
+    [selectable, choose]
+  );
+
   const canConfirm = Boolean(chosenPlot) && (chosenTiers.length <= 1 || chosenTier != null);
   const confirm = () => {
     if (!canConfirm) return;
@@ -103,10 +177,12 @@ export default function PlotPickerModal({
   };
 
   // ── pan / zoom ──
+  const [isDragging, setIsDragging] = useState(false);
+
   const zoomAround = useCallback(
     (factor, fx, fy) => {
       if (!fit) return;
-      setView((v) => zoomView(v, factor, fx, fy, fit));
+      setView((v) => zoomView(v, factor, fx, fy, fit, 5.5));
     },
     [fit]
   );
@@ -126,7 +202,10 @@ export default function PlotPickerModal({
       const rect = svg.getBoundingClientRect();
       const fx = v.x + ((e.clientX - rect.left) / rect.width) * v.w;
       const fy = v.y + ((e.clientY - rect.top) / rect.height) * v.h;
-      zoomAround(e.deltaY < 0 ? 0.8 : 1.25, fx, fy);
+      // Smooth, clamped zoom step so trackpad gestures don't instantly fly to max zoom
+      const delta = Math.max(-80, Math.min(80, e.deltaY));
+      const factor = delta < 0 ? Math.max(0.85, 1 + delta * 0.002) : Math.min(1.15, 1 + delta * 0.002);
+      zoomAround(factor, fx, fy);
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
@@ -142,11 +221,15 @@ export default function PlotPickerModal({
       if (!d) return;
       const dx = ev.clientX - d.x;
       const dy = ev.clientY - d.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4) moved.current = true;
+      if (Math.abs(dx) + Math.abs(dy) > 10) {
+        if (!moved.current) setIsDragging(true);
+        moved.current = true;
+      }
       if (moved.current) setView(panView(d.view, -dx * d.k, -dy * d.k));
     };
     const onUp = () => {
       drag.current = null;
+      setIsDragging(false);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
@@ -192,16 +275,15 @@ export default function PlotPickerModal({
   const modal = (
     <div className="modal-overlay" style={{ zIndex: 10100 }} onClick={onClose} role="presentation">
       <div
-        className="modal"
+        className="modal plot-picker-modal"
         role="dialog"
         aria-modal="true"
         aria-label="Choose a plot"
-        style={{ zIndex: 10101, maxWidth: 1000, width: "96%" }}
         onClick={(e) => e.stopPropagation()}
         id="plot-picker"
       >
-        <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 className="modal-title" style={{ margin: 0 }}>
+        <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, marginBottom: "0.4rem" }}>
+          <h3 className="modal-title" style={{ margin: 0, fontSize: "1.1rem" }}>
             Choose a plot
           </h3>
           <button type="button" className="btn btn-ghost" onClick={onClose} aria-label="Close plot picker">
@@ -209,7 +291,7 @@ export default function PlotPickerModal({
           </button>
         </div>
 
-        <div style={{ position: "relative", margin: "0.6rem 0" }}>
+        <div style={{ position: "relative", marginBottom: "0.5rem", flexShrink: 0 }}>
           <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "var(--text-muted)" }} />
           <input
             type="text"
@@ -223,7 +305,7 @@ export default function PlotPickerModal({
         </div>
 
         {matches.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }} id="plot-picker-matches">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8, maxHeight: 60, overflowY: "auto", flexShrink: 0 }} id="plot-picker-matches">
             {matches.map((p) => {
               const ok = selectable.has(p.id);
               const who = (p.graves || []).map((g) => g.deceasedName).filter(Boolean).join(", ");
@@ -245,14 +327,83 @@ export default function PlotPickerModal({
           </div>
         )}
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
+        <div className="plot-picker-body">
           {/* ── Minimap ── */}
-          <div style={{ flex: "1 1 520px", minWidth: 0 }}>
-            {layout && view ? (
+          <div style={{ flex: "1 1 520px", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            {hasMapKey && (
+              <div role="tablist" aria-label="Map view" style={{ display: "flex", gap: 4, marginBottom: 6, flexShrink: 0 }}>
+                {[
+                  ["map", "Satellite map"],
+                  ["diagram", "Diagram"],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === key}
+                    onClick={() => {
+                      setMode(key);
+                      if (key === "map") setMapNote("");
+                    }}
+                    className="btn btn-ghost"
+                    id={`plot-picker-mode-${key}`}
+                    style={{
+                      padding: "3px 10px",
+                      fontSize: "0.75rem",
+                      border: mode === key ? "1.5px solid #3b82f6" : "1px solid var(--border-default)",
+                      background: mode === key ? "rgba(59, 130, 246, 0.15)" : undefined,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {mapNote && mode === "diagram" && (
+              <div
+                role="status"
+                id="plot-picker-map-note"
+                style={{
+                  marginBottom: 6,
+                  padding: "5px 9px",
+                  fontSize: "0.75rem",
+                  borderRadius: 6,
+                  background: "rgba(245, 158, 11, 0.14)",
+                  border: "1px solid rgba(245, 158, 11, 0.45)",
+                  color: "var(--text-primary)",
+                  flexShrink: 0,
+                }}
+              >
+                {mapNote}
+              </div>
+            )}
+            {mode === "map" ? (
               <div
                 style={{
                   position: "relative",
-                  aspectRatio: "16 / 9",
+                  flex: 1,
+                  minHeight: 320,
+                  width: "100%",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                }}
+                id="plot-picker-gmap"
+              >
+                <CemeteryMap
+                  plots={plots}
+                  selectedPlot={chosenPlot}
+                  onSelectPlot={handleMapSelect}
+                  dimmedPlotIds={blockedIds}
+                  fitPlots
+                />
+              </div>
+            ) : layout && view ? (
+              <div
+                style={{
+                  position: "relative",
+                  flex: 1,
+                  minHeight: 220,
                   width: "100%",
                   background: "var(--bg-base)",
                   border: "1px solid var(--border-default)",
@@ -264,8 +415,11 @@ export default function PlotPickerModal({
                   ref={svgRef}
                   viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
                   preserveAspectRatio="xMidYMid meet"
-                  style={{ width: "100%", height: "100%", display: "block", cursor: "grab", touchAction: "none" }}
+                  style={{ width: "100%", height: "100%", display: "block", cursor: isDragging ? "grabbing" : "grab", touchAction: "none" }}
                   onPointerDown={startDrag}
+                  onDoubleClick={() => {
+                    if (fit) setView(fit);
+                  }}
                   role="group"
                   aria-label="Cemetery plots"
                   id="plot-picker-map"
@@ -340,13 +494,13 @@ export default function PlotPickerModal({
                 </svg>
 
                 <div style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button type="button" className="btn btn-ghost" onClick={() => zoomCentre(0.7)} aria-label="Zoom in" title="Zoom in">
+                  <button type="button" className="btn btn-ghost" onClick={() => zoomCentre(0.75)} aria-label="Zoom in" title="Zoom in">
                     <ZoomIn size={15} />
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => zoomCentre(1 / 0.7)} aria-label="Zoom out" title="Zoom out">
+                  <button type="button" className="btn btn-ghost" onClick={() => zoomCentre(1 / 0.75)} aria-label="Zoom out" title="Zoom out">
                     <ZoomOut size={15} />
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => setView(fit)} aria-label="Show everything" title="Show everything">
+                  <button type="button" className="btn btn-ghost" onClick={() => setView(fit)} aria-label="Reset zoom / Show all" title="Reset zoom / Show all (or double-click map)">
                     <Maximize2 size={15} />
                   </button>
                 </div>
@@ -365,8 +519,25 @@ export default function PlotPickerModal({
               </div>
             )}
 
+            {mode === "map" && (
+              <div
+                style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8, fontSize: "0.72rem", color: "var(--text-secondary)", flexShrink: 0 }}
+                aria-hidden="true"
+              >
+                {MAP_LEGEND.map(([label, status]) => (
+                  <span key={status} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: getPlotStatusColor(status) }} />
+                    {label}
+                  </span>
+                ))}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: "#64748b", opacity: 0.35 }} />
+                  Dimmed: no vacant tier
+                </span>
+              </div>
+            )}
             <div
-              style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8, fontSize: "0.72rem", color: "var(--text-secondary)" }}
+              style={{ display: mode === "map" ? "none" : "flex", flexWrap: "wrap", gap: 12, marginTop: 8, fontSize: "0.72rem", color: "var(--text-secondary)", flexShrink: 0 }}
               aria-hidden="true"
             >
               {[
@@ -382,68 +553,108 @@ export default function PlotPickerModal({
               ))}
             </div>
 
-            <div style={{ marginTop: 6, minHeight: 20, fontSize: "0.78rem", color: "var(--text-secondary)" }} id="plot-picker-hover">
-              {hoverPlot ? (
+            <div style={{ marginTop: 6, minHeight: 20, fontSize: "0.78rem", color: "var(--text-secondary)", flexShrink: 0 }} id="plot-picker-hover">
+              {mode === "map" ? (
+                notice || "Click a plot on the map to choose it. Plots drawn dimmed have no vacant tier."
+              ) : hoverPlot ? (
                 <>
                   <strong style={{ color: "var(--text-primary)" }}>{hoverPlot.plotNumber}</strong>
                   {plotWhere(hoverPlot) ? ` · ${plotWhere(hoverPlot)}` : ""} · {vacancyText(hoverPlot)}
                 </>
               ) : (
-                "Hover a plot for details, click to choose it. Scroll to zoom, drag to move."
+                "Hover a plot for details, click to choose it. Scroll to zoom, drag to move, double-click to reset zoom."
               )}
             </div>
           </div>
 
           {/* ── Selection panel ── */}
-          <div style={{ flex: "0 1 280px", minWidth: 240 }} id="plot-picker-panel">
-            {chosenPlot ? (
-              <>
-                <div style={{ fontWeight: 700, fontSize: "1rem" }}>{chosenPlot.plotNumber}</div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", marginBottom: 8 }}>{plotWhere(chosenPlot)}</div>
+          <div
+            style={{
+              flex: "0 0 310px",
+              width: 310,
+              minWidth: 260,
+              maxWidth: 340,
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+            id="plot-picker-panel"
+          >
+            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+              {chosenPlot ? (
+                <>
+                  <div style={{ fontWeight: 700, fontSize: "0.98rem", color: "var(--text-primary)" }}>{chosenPlot.plotNumber}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginBottom: 4 }}>{plotWhere(chosenPlot)}</div>
 
-                {chosenTiers.length > 1 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }} role="radiogroup" aria-label="Tier">
-                    {[...chosenTiers].reverse().map((t) => (
-                      <button
-                        key={t.tier}
-                        type="button"
-                        role="radio"
-                        aria-checked={chosenTier === t.tier}
-                        disabled={Boolean(t.occupant)}
-                        onClick={() => setChosenTier(t.tier)}
-                        className="btn btn-ghost"
-                        data-tier={t.tier}
-                        style={{
-                          justifyContent: "flex-start",
-                          textAlign: "left",
-                          opacity: t.occupant ? 0.55 : 1,
-                          border: chosenTier === t.tier ? "1.5px solid #3b82f6" : "1px solid var(--border-default)",
-                          background: chosenTier === t.tier ? "rgba(59, 130, 246, 0.15)" : undefined,
-                        }}
-                      >
-                        <span style={{ fontWeight: 600 }}>{t.label}</span>
-                        <span style={{ marginLeft: "auto", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                          {t.occupant ? t.occupant.deceasedName : "vacant"}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>Single-burial lot.</div>
-                )}
-              </>
-            ) : (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                Click a green or amber plot on the map to choose it.
-              </div>
-            )}
+                  {chosenTiers.length > 1 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 155, overflowY: "auto", scrollbarWidth: "thin" }} role="radiogroup" aria-label="Tier">
+                      {[...chosenTiers].reverse().map((t) => (
+                        <button
+                          key={t.tier}
+                          type="button"
+                          role="radio"
+                          aria-checked={chosenTier === t.tier}
+                          disabled={Boolean(t.occupant)}
+                          onClick={() => setChosenTier(t.tier)}
+                          className="btn btn-ghost"
+                          data-tier={t.tier}
+                          style={{
+                            justifyContent: "flex-start",
+                            textAlign: "left",
+                            padding: "5px 9px",
+                            fontSize: "0.78rem",
+                            opacity: t.occupant ? 0.55 : 1,
+                            border: chosenTier === t.tier ? "1.5px solid #3b82f6" : "1px solid var(--border-default)",
+                            background: chosenTier === t.tier ? "rgba(59, 130, 246, 0.15)" : undefined,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>{t.label}</span>
+                          <span style={{ marginLeft: "auto", fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                            {t.occupant ? t.occupant.deceasedName : "vacant"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>Single-burial lot.</div>
+                  )}
+                </>
+              ) : (
+                <div style={{ color: "var(--text-muted)", fontSize: "0.82rem", padding: "4px 0" }}>
+                  Click a plot on the map to choose it.
+                </div>
+              )}
+            </div>
 
             {unplaced.length > 0 && (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-secondary)", marginBottom: 4 }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
+                <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-secondary)", marginBottom: 5, letterSpacing: "0.03em", flexShrink: 0 }}>
                   NOT ON THE MAP ({unplaced.length})
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 110, overflowY: "auto" }} id="plot-picker-unplaced">
+                <div
+                  id="plot-picker-unplaced"
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignContent: "flex-start",
+                    gap: 4,
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    paddingRight: 4,
+                    scrollbarWidth: "thin",
+                  }}
+                >
                   {unplaced.slice(0, MAX_UNPLACED).map((p) => (
                     <button
                       key={p.id}
@@ -460,7 +671,7 @@ export default function PlotPickerModal({
                     </button>
                   ))}
                   {unplaced.length > MAX_UNPLACED && (
-                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", alignSelf: "center", padding: "2px 4px" }}>
                       …{unplaced.length - MAX_UNPLACED} more — use search
                     </span>
                   )}
@@ -470,7 +681,19 @@ export default function PlotPickerModal({
           </div>
         </div>
 
-        <div className="modal-footer" style={{ marginTop: "0.85rem", display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+        <div
+          className="modal-footer"
+          style={{
+            marginTop: "0.6rem",
+            paddingTop: "0.6rem",
+            borderTop: "1px solid var(--border-default)",
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            gap: "0.75rem",
+            flexShrink: 0,
+          }}
+        >
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>

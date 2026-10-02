@@ -29,7 +29,7 @@ Cemetery record-keeping is commonly handled through physical logbooks, aging map
 - **Searchable directory** with exact and phonetic ("fuzzy") matching by name, grave ID, or year of burial.
 - **Interactive map** built on the Google Maps API with plot markers, section/plot identifiers, and pedestrian route overlays.
 - **Kiosk mode** for on-site self-service navigation.
-- **Role-based dashboards** for records, plots, locations, requests, verification, broadcasts, notifications, analytics, and reports.
+- **Role-based dashboards** for records, plots, locations, requests, verification, broadcasts, notifications, reports, and a **User Log** (who signed in and what each user changed, with IP and time; admin only). The Analytics page is hidden from the menus but its code is kept.
 - **Reports and exports** in CSV, PDF, and XLSX formats.
 - **Notifications and broadcasts** with optional email delivery.
 - **Records lifecycle policy**: records remain active for a defined retention period, then transition to a protected archive (never deleted) while staying searchable for authorized users.
@@ -112,8 +112,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | `npm run test:e2e` | Run end-to-end tests (Playwright) |
 | `npm run db:setup` | Create DB, migrate, generate client, and seed |
 | `npm run db:inspect` | Read-only summary of the layout in the database |
-| `npm run db:backfill-tiers` | Move legacy tier/photo data into real columns (dry run by default) |
-| `npm run db:cleanup-demo` | Remove duplicate demo sections left by older seed runs (dry run by default) |
+| `npm run db:backfill-tiers` | Move legacy tier/photo data into real columns (dry run; add `-- --apply` to write) |
+| `npm run db:cleanup-demo` | Remove duplicate demo sections left by older seed runs (dry run; add `-- --apply` to delete) |
 | `npm run db:rotate-encryption` | Rotate the encryption key for sensitive fields |
 
 ## Project Structure
@@ -171,7 +171,7 @@ A **building** is any plot with `totalTiers > 1`; its row is its section (`locat
 - Authentication and role-based access control (Admin, Staff, Client).
 - Field-level encryption for sensitive burial details, with a key-rotation utility.
 - Database-backed rate limiting on public endpoints.
-- Audit logging of record changes and key interactions.
+- Audit logging of record changes and key interactions, including sign-ins, failed sign-ins and sign-outs, viewable by admins in the User Log.
 - Privacy-safe analytics that avoid exposing personal identifiers.
 
 ## Deployment

@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   Search, Moon, Sun, Bell, User, LogOut, X, CornerDownLeft,
   LayoutDashboard, Archive, MapPin, Map, ClipboardList, Users,
-  MessageSquare, LineChart, Megaphone, BarChart3, BadgeCheck, CheckCheck,
+  MessageSquare, LineChart, Megaphone, ScrollText, BadgeCheck, CheckCheck,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsClient } from "@/lib/use-is-client";
@@ -40,13 +40,14 @@ const ROUTES = {
   Admin: [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Graves", href: "/dashboard/graves", icon: Archive },
+    { label: "Search Graves", href: "/dashboard/search", icon: Search },
     { label: "Plots", href: "/dashboard/plots", icon: MapPin },
     { label: "Locations", href: "/dashboard/locations", icon: Map },
     { label: "Map", href: "/dashboard/map", icon: Map },
     { label: "Requests", href: "/dashboard/requests", icon: ClipboardList },
     { label: "Notifications", href: "/dashboard/notifications", icon: Bell },
     { label: "Broadcasts", href: "/dashboard/broadcasts", icon: Megaphone },
-    { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+    { label: "User Log", href: "/dashboard/user-log", icon: ScrollText },
     { label: "Verification", href: "/dashboard/verification", icon: BadgeCheck },
     { label: "Users", href: "/dashboard/users", icon: Users },
     { label: "Feedback", href: "/dashboard/feedback", icon: MessageSquare },
@@ -55,6 +56,7 @@ const ROUTES = {
   Staff: [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Graves", href: "/dashboard/graves", icon: Archive },
+    { label: "Search Graves", href: "/dashboard/search", icon: Search },
     { label: "Plots", href: "/dashboard/plots", icon: MapPin },
     { label: "Map", href: "/dashboard/map", icon: Map },
     { label: "Requests", href: "/dashboard/requests", icon: ClipboardList },
@@ -123,8 +125,12 @@ export default function DashboardHeader() {
   }, [role]);
 
   const paths = pathname ? pathname.split("/").filter(Boolean) : [];
+  // "user-log" → "User Log"
   const currentPage = paths.length > 1
-    ? paths[paths.length - 1].charAt(0).toUpperCase() + paths[paths.length - 1].slice(1)
+    ? paths[paths.length - 1]
+        .split("-")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ")
     : "Dashboard";
 
   const filteredRoutes = query.trim()

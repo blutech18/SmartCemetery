@@ -1,27 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Search, Archive, MapPin } from "lucide-react";
+import { describeGravePosition } from "@/lib/plot-format";
 
 export default function DashboardSearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSearch(e) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  const runSearch = useCallback(async (term) => {
+    if (!term.trim()) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/graves?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/graves?q=${encodeURIComponent(term)}`);
       const data = await res.json();
       setResults(data);
     } catch (err) {
       console.error(err);
     }
     setLoading(false);
+  }, []);
+
+  function handleSearch(e) {
+    e.preventDefault();
+    runSearch(query);
   }
+
+  // Arriving from a dashboard's "Locate a Grave or Plot" box: /dashboard/search?q=<name>
+  useEffect(() => {
+    const term = new URLSearchParams(window.location.search).get("q");
+    if (!term || !term.trim()) return;
+    queueMicrotask(() => {
+      setQuery(term);
+      runSearch(term);
+    });
+  }, [runSearch]);
 
   const allResults = results
     ? [...(results.exact || []), ...(results.suggestions || []), ...(results.nearby || [])]
@@ -93,7 +108,7 @@ export default function DashboardSearchPage() {
                   <div className="search-result-name">{grave.deceasedName}</div>
                   <div className="search-result-meta">
                     {grave.plot?.locationDetail?.location?.name || "Unknown"} ·{" "}
-                    Plot {grave.plot?.plotNumber || "—"}
+                    {describeGravePosition(grave)?.text || `Plot ${grave.plot?.plotNumber || "—"}`}
                     {grave.burialDate &&
                       ` · ${new Date(grave.burialDate).toLocaleDateString()}`}
                   </div>

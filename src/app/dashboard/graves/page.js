@@ -9,7 +9,7 @@ import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useBodyScrollLock } from "../../../lib/use-body-scroll-lock";
 import { useIsClient } from "@/lib/use-is-client";
 import PlotPickerModal from "@/components/plot-picker/PlotPickerModal";
-import { canAddGrave, getGravePhoto, tierAvailability } from "@/lib/plot-format";
+import { canAddGrave, describeGravePosition, getGravePhoto, tierAvailability } from "@/lib/plot-format";
 
 const EMPTY_FORM = {
   deceasedName: "",
@@ -443,6 +443,11 @@ export default function GravesPage() {
                       <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
                         {grave.plot?.plotNumber || "—"}
                       </span>
+                      {describeGravePosition(grave)?.tier && (
+                        <div className="text-sm text-muted">
+                          Column {describeGravePosition(grave).column} · {describeGravePosition(grave).tier}
+                        </div>
+                      )}
                     </td>
                     <td className="text-sm">
                       {grave.plot?.locationDetail?.location?.name || "—"}

@@ -197,6 +197,9 @@ export async function PATCH(request, { params }) {
         if (!target) {
           return { error: "plot_not_found" };
         }
+        if (target.status === "maintenance") {
+          return { error: "plot_maintenance" };
+        }
       } else if (changingTier) {
         // Check that the new tier on the same plot is free
         const tierTaken = await tx.grave.findFirst({
@@ -277,6 +280,9 @@ export async function PATCH(request, { params }) {
     if (result.error === "not_found") return errorResponse(404, "Grave not found");
     if (result.error === "archived") return errorResponse(409, "Archived graves cannot be updated");
     if (result.error === "plot_not_found") return errorResponse(404, "Plot not found");
+    if (result.error === "plot_maintenance") {
+      return errorResponse(409, "The destination plot is under maintenance");
+    }
     if (result.error === "plot_unavailable") {
       return errorResponse(409, `Plot is currently ${result.plotStatus}`);
     }

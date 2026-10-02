@@ -90,7 +90,8 @@ export function getClientIp(request) {
  * action string, bounded to the column's 255-char limit.
  *
  * @param {Object} params
- * @param {number} params.userId - acting user's identifier
+ * @param {number|string|null} params.userId - acting user's identifier, or `null` when
+ *        there is no known account (e.g. a failed sign-in for an unknown email)
  * @param {string} params.action - entity type + operation, e.g. "grave.create"
  * @param {string} [params.ipAddress] - client IP; empty string is stored as null
  * @param {object|string} [params.details] - optional structured context
@@ -105,9 +106,11 @@ export async function writeAuditLog({ userId, action, ipAddress, tx, details } =
     // `UserLog.userId` is an Int FK, but callers often pass the JWT `id` claim
     // which is a string. Coerce defensively so every call site writes a valid
     // audit entry (Req 14.1).
+    // An explicit `null` records an event with no known account; anything else
+    // that is not an integer is a caller bug and is reported, not stored.
     const numericUserId =
-      typeof userId === "number" ? userId : Number.parseInt(userId, 10);
-    if (!Number.isInteger(numericUserId)) {
+      userId === null ? null : typeof userId === "number" ? userId : Number.parseInt(userId, 10);
+    if (numericUserId !== null && !Number.isInteger(numericUserId)) {
       throw new Error(`invalid audit userId: ${String(userId)}`);
     }
 

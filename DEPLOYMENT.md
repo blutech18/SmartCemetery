@@ -70,7 +70,7 @@ The seed creates **only** the user accounts unless told otherwise:
 
 Earlier seed versions re-created the demo sections on every run, leaving duplicate plots such as
 `A1-009` listed several times. `npm run db:cleanup-demo` (dry run) shows what would be removed and
-`CLEANUP_CONFIRM=apply npm run db:cleanup-demo` removes it. It keeps the oldest copy of each demo
+`npm run db:cleanup-demo -- --apply` removes it. It keeps the oldest copy of each demo
 section and only deletes a duplicate whose records all carry invented demo names; anything that
 looks real is left alone and reported.
 

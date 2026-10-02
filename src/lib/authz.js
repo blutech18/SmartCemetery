@@ -28,6 +28,7 @@ export const PERMISSIONS = {
   graves: ["Admin"], // grave record management
   reports: ["Admin"], // report generation/export
   analytics: ["Admin"],
+  userLogs: ["Admin"], // audit trail (User Log)
   broadcasts: ["Admin"],
   encryption: ["Admin"],
   archival: ["Admin"],

@@ -13,6 +13,7 @@ import {
   tierAvailability,
   hasVacantTier,
   canAddGrave,
+  describeGravePosition,
 } from "./plot-format";
 
 describe("plot-format", () => {
@@ -148,6 +149,43 @@ describe("plot-format", () => {
     expect(statusMeta("available").label).toBe("Available");
     expect(statusMeta("hold").label).toBe("Hold / Reserved");
     expect(statusMeta("something-else").label).toBe("Unavailable");
+  });
+
+  describe("describing where a grave is", () => {
+    const crypt = (over = {}) => ({
+      tier: 2,
+      plot: { plotNumber: "ROW-E01-C04", totalTiers: 4, locationDetail: { subsection: "ROW-E01" }, ...over },
+    });
+
+    it("gives the row, column and tier of a building plot", () => {
+      expect(describeGravePosition(crypt())).toEqual({
+        row: "Row E01",
+        column: "4",
+        tier: "Tier 2 (Second Level)",
+        text: "Row E01 · Column 4 · Tier 2 (Second Level)",
+      });
+    });
+
+    it("reads the column from the end of the number, whatever the prefix", () => {
+      const p = describeGravePosition({ tier: 1, plot: { plotNumber: "WALAG-001", totalTiers: 4, locationDetail: { subsection: "ROW-W07" } } });
+      expect(p.text).toBe("Row W07 · Column 1 · Tier 1 (Ground Level)");
+    });
+
+    it("names the top tier, and works for any tier count", () => {
+      expect(describeGravePosition(crypt({ totalTiers: 3 })).tier).toBe("Tier 2 (Second Level)");
+      expect(describeGravePosition({ ...crypt({ totalTiers: 3 }), tier: 3 }).tier).toBe("Tier 3 (Top Level)");
+    });
+
+    it("describes an ordinary lot by section and plot, with no tier", () => {
+      const p = describeGravePosition({ tier: 1, plot: { plotNumber: "A1-009", totalTiers: 1, locationDetail: { subsection: "A1" } } });
+      expect(p).toEqual({ row: "A1", column: null, tier: null, text: "A1 · Plot A1-009" });
+    });
+
+    it("copes with missing pieces", () => {
+      expect(describeGravePosition(null)).toBeNull();
+      expect(describeGravePosition({ tier: 1 })).toBeNull();
+      expect(describeGravePosition(crypt({ locationDetail: undefined })).text).toBe("Column 4 · Tier 2 (Second Level)");
+    });
   });
 
   describe("adding records to tiers", () => {

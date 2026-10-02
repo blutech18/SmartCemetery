@@ -1,7 +1,7 @@
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
-import { getClientIp } from "@/lib/audit";
+import { getClientIp, writeAuditLog } from "@/lib/audit";
 import { boundedRateLimit, clearRateLimit, consumeRateLimit } from "@/lib/rate-limit";
 
 export const authOptions = {
@@ -16,6 +16,7 @@ export const authOptions = {
         if (!credentials?.email || !credentials?.password) return null;
 
         const email = credentials.email.trim().toLowerCase();
+        const ipAddress = getClientIp(request);
         const loginLimit = boundedRateLimit("LOGIN_RATE_LIMIT_MAX", 5, 1, 100);
         const windowSeconds = boundedRateLimit("LOGIN_RATE_LIMIT_WINDOW_SECONDS", 900, 60, 86_400);
         let throttle;
@@ -32,6 +33,8 @@ export const authOptions = {
           throw new Error("Service temporarily unavailable. Please try again later.");
         }
         if (!throttle.allowed) {
+          // Never store the attempted email: it may be a mistyped password.
+          await writeAuditLog({ userId: null, action: "auth.login_blocked", ipAddress });
           const retryMinutes = Math.ceil(throttle.retryAfterSeconds / 60);
           throw new Error(
             `Too many login attempts. Your account is temporarily locked. Please try again in ${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}.`
@@ -49,14 +52,17 @@ export const authOptions = {
         }
 
         if (!user || user.status !== "active") {
+          await writeAuditLog({ userId: user ? user.id : null, action: "auth.login_failed", ipAddress });
           throw new Error("Invalid email or password. Please check your credentials and try again.");
         }
 
         const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!isValid) {
+          await writeAuditLog({ userId: user.id, action: "auth.login_failed", ipAddress });
           throw new Error("Invalid email or password. Please check your credentials and try again.");
         }
         await clearRateLimit(throttle.key).catch(() => {});
+        await writeAuditLog({ userId: user.id, action: "auth.login", ipAddress });
 
         return {
           id: String(user.id),
@@ -106,6 +112,12 @@ export const authOptions = {
         session.user.disabled = token.disabled === true;
       }
       return session;
+    },
+  },
+  events: {
+    // NextAuth gives sign-out no request, so there is no IP to record here.
+    async signOut({ token }) {
+      if (token?.id) await writeAuditLog({ userId: token.id, action: "auth.logout" });
     },
   },
   pages: {

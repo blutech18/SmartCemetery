@@ -284,6 +284,15 @@ export async function POST(request) {
         return { claimError: { status: 404, message: "Plot not found" } };
       }
 
+      if (existingPlot.status === "maintenance") {
+        return {
+          claimError: {
+            status: 409,
+            message: "This plot is under maintenance. Set it back to Occupied or Available before adding a record.",
+          },
+        };
+      }
+
       // The tier must exist in this plot (an ordinary lot has a single tier).
       if (Number.isFinite(existingPlot.totalTiers) && tier > existingPlot.totalTiers) {
         return {

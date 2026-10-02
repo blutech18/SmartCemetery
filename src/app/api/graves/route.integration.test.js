@@ -266,6 +266,27 @@ describe("Task 5.2 — secured grave endpoints", () => {
 // Task 7.4 — Property 10: creation gated by duplicates + confirmation flag
 // Validates: Requirements 4.2, 4.3, 4.4
 // =============================================================================
+describe("plots under maintenance take no new records", () => {
+  it("refuses to add a record to a plot in maintenance", async () => {
+    prisma.$transaction.mockImplementation(async (fn) => {
+      const tx = {
+        grave: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(async () => null) },
+        graveDetail: { create: vi.fn() },
+        plot: {
+          findUnique: vi.fn(async () => ({ id: 10, status: "maintenance", totalTiers: 4 })),
+          update: vi.fn(),
+        },
+      };
+      lastTx = tx;
+      return fn(tx);
+    });
+    const res = await POST(postRequest({ deceasedName: "John Smith", plotId: 10, tier: 2 }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/under maintenance/);
+    expect(lastTx.grave.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("tier validity comes from the plot, not a fixed number", () => {
   function plotWithTiers(totalTiers) {
     prisma.$transaction.mockImplementation(async (fn) => {

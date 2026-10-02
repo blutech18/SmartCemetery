@@ -4,6 +4,8 @@
  * Grave.tier/birthDate/deathDate, PlotPhoto), never from parsed notes.
  */
 
+import { buildingLabel, columnShortLabel } from "./cemetery-layout";
+
 /** Two-letter initials for a name, or "?" when empty. */
 export function getInitials(name) {
   if (!name) return "?";
@@ -216,4 +218,33 @@ export function getPlotSummaryNames(p) {
   const names = getPlotOccupantNames(p);
   if (names.length > 0) return names;
   return [p.plotNumber ? `Plot ${p.plotNumber}` : "Plot Details"];
+}
+
+/**
+ * Where a grave is, in words a visitor can follow.
+ *
+ * Building plots read "Row E01 · Column 4 · Tier 2 (Second Level)" — the row is
+ * the plot's section, the column is the number at the end of the plot number.
+ * Ordinary lots read "Section A1 · Plot A1-009".
+ *
+ * @param {{ tier?: number, plot?: { plotNumber?: string, totalTiers?: number,
+ *   locationDetail?: { subsection?: string } } }} grave
+ * @returns {null | { row: string|null, column: string|null, tier: string|null, text: string }}
+ */
+export function describeGravePosition(grave) {
+  const plot = grave?.plot;
+  if (!plot) return null;
+  const section = plot.locationDetail?.subsection || null;
+  const total = Number(plot.totalTiers) || 1;
+
+  if (total > 1) {
+    const row = section ? buildingLabel(section) : null;
+    const column = plot.plotNumber ? columnShortLabel(plot.plotNumber) : null;
+    const tier = tierLabel(Number(grave.tier) || 1, total);
+    const text = [row, column ? `Column ${column}` : null, tier].filter(Boolean).join(" · ");
+    return { row, column, tier, text };
+  }
+
+  const text = [section, plot.plotNumber ? `Plot ${plot.plotNumber}` : null].filter(Boolean).join(" · ");
+  return { row: section, column: null, tier: null, text };
 }
